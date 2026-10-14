@@ -97,7 +97,7 @@ jobs:
         if: matrix.python-version == '3.14'
         run: |
           uv run --locked python -m pytest -q -m 'not network' --cov --cov-report=html --cov-report=xml
-          uv run --locked coverage report --include='src/sourcesift/*'
+          uv run --locked coverage report --include='src/sourcesift/*' --fail-under=90
           uv run --locked coverage report --include='scripts/*'
       - name: Upload coverage reports
         if: ${{ !cancelled() && matrix.python-version == '3.14' }}
@@ -130,6 +130,8 @@ jobs:
             smoke_env="$RUNNER_TEMP/sourcesift-smoke"
             uv venv "$smoke_env" --python 3.14 --clear
             uv pip install --python "$smoke_env/bin/python" "$distribution"
+            "$smoke_env/bin/ssift" --help > /dev/null
+            "$smoke_env/bin/ssift" --version
             "$smoke_env/bin/python" -I -c 'import sourcesift; from importlib.metadata import version; print("Installed sourcesift", version("sourcesift"))'
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

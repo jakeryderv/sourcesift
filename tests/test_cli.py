@@ -235,3 +235,30 @@ def test_cli_uses_shared_context_and_model(invoke, monkeypatch, tmp_path, capsys
     assert output.out.startswith("Combined summary\n")
     assert "No external sources" in output.out
     assert output.err == ""
+
+
+def test_configuration_failure_exit(invoke, tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        invoke("ask", "task", "--config", str(tmp_path / "missing.toml"))
+    assert exc.value.code == 2
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert "configuration file does not exist" in out.err
+
+
+def test_closed_output_pipe(invoke, fake_run, monkeypatch):
+    closed = []
+
+    class ClosedPipe:
+        def write(self, text):
+            raise BrokenPipeError
+
+        def fileno(self):
+            return 1
+
+    monkeypatch.setattr(sys, "stdout", ClosedPipe())
+    monkeypatch.setattr(cli.os, "dup2", lambda source, target: closed.append(target))
+    with pytest.raises(SystemExit) as exc:
+        invoke("ask", "task")
+    assert exc.value.code == 141
+    assert closed == [1]

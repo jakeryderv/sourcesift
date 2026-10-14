@@ -1,6 +1,7 @@
 """Resolve TOML, supported environment settings, and explicit overrides."""
 
 import os
+import stat
 import tomllib
 from pathlib import Path
 from typing import Any, Literal
@@ -87,18 +88,24 @@ def load_settings(
     """Load defaults < TOML < environment < explicit nested overrides.
 
     An absent default config is allowed. An explicitly selected config must exist.
-    Supported environment variables are SOURCESIFT_CONFIG, SOURCESIFT_MODEL, and
-    OPENROUTER_API_KEY. No dotenv files or working-directory config are loaded.
+    Supported environment variables are SOURCESIFT_CONFIG, SOURCESIFT_MODEL,
+    SOURCESIFT_REASONING_EFFORT, and OPENROUTER_API_KEY. No dotenv files or working-directory config are loaded.
     """
     selected = (
         config_path if config_path is not None else os.environ.get("SOURCESIFT_CONFIG")
     )
-    path = (
-        Path(selected).expanduser() if selected is not None else default_config_path()
-    )
-    path = path.resolve()
+    try:
+        path = (
+            Path(selected).expanduser()
+            if selected is not None
+            else default_config_path()
+        ).resolve()
+    except (OSError, RuntimeError, ValueError):
+        raise ConfigurationError("Cannot resolve the configuration path.") from None
     data: dict[str, Any] = {}
     try:
+        if not stat.S_ISREG(path.stat().st_mode):
+            raise ConfigurationError("Configuration must be a regular TOML file.")
         with path.open("rb") as stream:
             raw = stream.read(65537)
         if len(raw) > 65536:
@@ -109,7 +116,7 @@ def load_settings(
             raise ConfigurationError(
                 "Selected configuration file does not exist."
             ) from None
-    except (OSError, UnicodeError, tomllib.TOMLDecodeError):
+    except (OSError, UnicodeError, ValueError):
         raise ConfigurationError("Cannot read configuration as UTF-8 TOML.") from None
     # Credentials belong in the environment or SDK, never in TOML.
     if isinstance(data.get("agent"), dict) and "api_key" in data["agent"]:

@@ -4,9 +4,9 @@
 such as “check news” and “check tech,” selects relevant registered sources, and
 returns grounded responses through a reusable SDK and composable CLI.
 
-**Status:** Maintained implementation plan. Version `0.0.1` is a published scaffold;
-Phase 0 is complete and application functionality remains planned. Examples below
-are intended behavior, not currently available commands.
+**Status:** Phases 0 and 1 are implemented. Phase 1 supports single model requests
+with supplied context through Python and `ssift`; source retrieval starts in Phase 2.
+Examples in later phases remain planned behavior.
 
 **Related documents:** [Use cases and product scope](use-cases.md),
 [architecture and proposed contracts](design.md), and [setup and releases](https://github.com/jakeryderv/sourcesift#readme).
@@ -42,8 +42,8 @@ Completed foundation:
 - [x] Add Conventional Commit PR-title checks, workflow linting, and release-guard tests.
 - [x] Require PRs and passing CI on main, use squash merges, and protect release tags.
 
-The package currently exposes only `hello()`. A successful packaging release does
-not mark any of the application milestones below complete.
+The original `hello()` greeting remains available for compatibility. Packaging and
+release success are separate from the application milestones below.
 
 ## Phase 1 — Core Agent, Context, and CLI
 
@@ -52,17 +52,17 @@ not mark any of the application milestones below complete.
 
 ### Implementation
 
-- [ ] Establish the minimal application, request/result, and configuration models.
-- [ ] Integrate PydanticAI with OpenRouter and configurable model selection.
-- [ ] Implement the proposed `SourceSift` SDK with async execution and a synchronous convenience method.
-- [ ] Implement Cyclopts CLI and the `ssift` entry point.
-- [ ] Support prompts, file context, and piped/redirected stdin.
-- [ ] Support optional Markdown user context referenced from TOML configuration.
-- [ ] Finalize configuration locations, precedence, relative-path rules, and supported environment variables.
-- [ ] Render Markdown/plain text to stdout and diagnostics/errors to stderr.
-- [ ] Define exit behavior and avoid requiring interactive input for `ask`.
-- [ ] Set initial request/input limits and report missing credentials or model failures clearly.
-- [ ] Add deterministic checks for configuration, input handling, output, and failure behavior.
+- [x] Establish the minimal application, request/result, and configuration models.
+- [x] Integrate PydanticAI with OpenRouter and configurable model selection.
+- [x] Implement the proposed `SourceSift` SDK with async execution and a synchronous convenience method.
+- [x] Implement Cyclopts CLI and the `ssift` entry point.
+- [x] Support prompts, file context, and piped/redirected stdin.
+- [x] Support optional Markdown user context referenced from TOML configuration.
+- [x] Finalize configuration locations, precedence, relative-path rules, and supported environment variables.
+- [x] Render Markdown/plain text to stdout and diagnostics/errors to stderr.
+- [x] Define exit behavior and avoid requiring interactive input for `ask`.
+- [x] Set initial request/input limits and report missing credentials or model failures clearly.
+- [x] Add deterministic checks for configuration, input handling, output, and failure behavior.
 
 ### Example Usage
 
@@ -82,6 +82,12 @@ ssift ask "Summarize this" < report.md
 
 **Use cases:** Establishes input/context foundations for UC-05 and UC-08. Their
 research behavior is completed with source retrieval, not by this phase alone.
+
+Phase 1 validation includes deterministic SDK/CLI tests, an in-memory OpenRouter
+transport, Unicode input properties, a 90% application branch-coverage gate, and
+installed CLI checks. A separate opt-in live check exercises a synthetic document;
+ordinary CI requires no credentials. See the [CLI](cli.md), [SDK](sdk.md), and
+[configuration](configuration.md) guides for implemented contracts.
 
 ## Phase 2 — Registered Sources and Grounded Research
 
@@ -281,7 +287,7 @@ For each implemented capability:
 | Priority | Focus | Phase |
 |---|---|---|
 | Complete | Published scaffold and CI/release foundation | 0 |
-| P0 | SDK, context, and composable CLI | 1 |
+| Complete | SDK, context, and composable CLI | 1 |
 | P0 | Semantic source selection and grounded research | 2 |
 | P1 | Third-party plugins | 3 |
 | P1 | Reusable briefings and recommendations | 4 |

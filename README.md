@@ -1,14 +1,15 @@
 # SourceSift
 
-SourceSift is a planned Python agent for source-aware research and personalized
-content discovery. Requests such as “check news” or “check tech” will guide source
+SourceSift provides a Python SDK and CLI for requests with explicit document and
+personal context. Source-aware research and personalized discovery are in development. Requests such as “check news” or “check tech” will guide source
 selection using registered links, metadata, descriptions, and optional user context.
 The first curated collection will cover US national news, technology, AI, business,
 marketing, and finance.
 
-Version **0.0.1 is an initial scaffold**. Source selection, retrieval, research,
-and the planned `ssift` CLI are not implemented yet. The current package only
-exposes the scaffold's `hello()` function; no stable API is promised.
+**Phase 1 is implemented:** single requests through PydanticAI and OpenRouter,
+optional text/Markdown context, TOML configuration, and shell-friendly output.
+Source selection, URL retrieval, and verified current-news research arrive in
+Phase 2. The SDK is an early API and may evolve before 1.0.
 
 ## Project Documentation
 
@@ -20,6 +21,8 @@ The Markdown documents directly under `docs/` are the maintained project referen
   should behave.
 - [Design](docs/design.md): architecture, proposed interfaces, and technical decisions.
 - [Roadmap](docs/roadmap.md): implementation order, progress, and completion criteria.
+- [CLI guide](docs/cli.md), [Python SDK](docs/sdk.md), and
+  [configuration](docs/configuration.md): current usage and defaults.
 - [API reference](docs/reference/index.md): source-based reference rendered by MkDocs.
 
 Documents in `docs/capstone/` are archived course material for reference. The
@@ -33,11 +36,28 @@ Requires Python 3.11 or newer.
 pip install sourcesift
 ```
 
-```python
-from sourcesift import hello
+Set `OPENROUTER_API_KEY` securely in your environment, then select a model:
 
-print(hello())  # Hello from sourcesift!
+```sh
+export SOURCESIFT_MODEL=openai/gpt-6.1-sol
+export SOURCESIFT_REASONING_EFFORT=medium
+ssift ask "Summarize this document" --file report.md
+cat report.md | ssift ask "Summarize this" > summary.md
 ```
+
+```python
+from sourcesift import SourceSift
+
+app = SourceSift()
+result = app.run_sync("Summarize this document", files=["report.md"])
+print(result.answer)
+# Inside an async application: result = await app.run(...)
+```
+
+Context is sent to the selected model through OpenRouter. No model is selected
+implicitly and no external sources are retrieved in Phase 1. See the
+[configuration guide](docs/configuration.md) for background context, limits, and
+settings precedence.
 
 ## Development
 
@@ -74,9 +94,12 @@ wheel/sdist distributions and installs both in fresh environments. Superseded PR
 runs are canceled; main and publishing runs remain independent. CI still enforces
 checks even if local hooks were not installed or were skipped.
 
-Mark future tests requiring external services or API credentials with
+Mark tests requiring external services or API credentials with
 `@pytest.mark.network`. Hooks and normal CI exclude them; run them explicitly with
-`uv run --locked python -m pytest -m network` when the services are configured.
+`SOURCESIFT_LIVE_TEST=1 uv run --locked python -m pytest -m network` after setting
+`OPENROUTER_API_KEY`, `SOURCESIFT_MODEL`, and optionally `SOURCESIFT_REASONING_EFFORT`.
+This opt-in check sends a small synthetic document to the model and incurs normal
+provider charges. Tests never load `.env` automatically.
 
 Run distribution validation locally with:
 
@@ -85,8 +108,8 @@ uv build --no-sources
 uv run --locked twine check --strict dist/*
 ```
 
-Tests currently cover release guardrails. Add application tests alongside Phase 1
-features. Package runtime versions should be read through `importlib.metadata`
+Tests cover configuration, input boundaries, SDK execution, CLI composition,
+provider transport, and release guardrails. Ordinary tests disable live model calls. Package runtime versions should be read through `importlib.metadata`
 instead of maintaining another hard-coded version in Python source.
 
 ### Documentation preview
@@ -115,23 +138,23 @@ current main commit; if its artifacts have expired, rerun that commit's push CI 
 
 ```sh
 uv run --locked python -m pytest -q -m 'not network' --cov --cov-report=html --cov-report=xml
-uv run --locked coverage report --include='src/sourcesift/*'
+uv run --locked coverage report --include='src/sourcesift/*' --fail-under=90
 uv run --locked coverage report --include='scripts/*'
 ```
 
 Branch coverage runs on Python 3.14 in CI; the other Python jobs run ordinary tests.
 The `coverage-reports` artifact contains HTML and XML reports. Open `htmlcov/index.html`
 locally for line and branch details. Application and tooling summaries are reported
-separately, with no minimum percentage enforced until Phase 1 establishes meaningful
-application tests. The scaffold currently has no application tests; tooling coverage
-does not establish coverage of planned agent behavior.
+separately. CI requires at least 90% application coverage, including branches;
+tooling coverage remains informational. Offline agent tests use deterministic models
+and a mock HTTP transport, and do not establish live model answer quality.
 
 Hypothesis tests run with the ordinary offline suite. Initial properties check that
 only release PRs can change versions and that releases increase through development,
 alpha, beta, release-candidate, final, and post-release versions. CI uses a reproducible
 200-example profile per property; local runs use Hypothesis defaults and retain
-failure examples in ignored `.hypothesis/`. Add application properties alongside real
-Phase 1 behavior, retaining explicit examples and mocked-provider tests.
+failure examples in ignored `.hypothesis/`. Application properties also check exact UTF-8 byte boundaries. Retain explicit
+examples and mocked-provider tests alongside properties.
 
 ## GitHub Workflow
 

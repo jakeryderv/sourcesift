@@ -147,3 +147,52 @@ def test_unicode_budget_counts_bytes_exactly(text):
     )
     with pytest.raises(InputError):
         prepare_request(request, Settings(limits=Limits(max_input_bytes=size - 1)))
+
+
+def test_invalid_request_encoding_and_stream_failure():
+    for text in ("\ud800", "bad\0text"):
+        with pytest.raises(InputError):
+            prepare_request(Request(prompt=text), Settings())
+
+    class BrokenStream(io.BytesIO):
+        def read(self, size=-1):
+            raise OSError("private details")
+
+    with pytest.raises(InputError, match="standard input"):
+        prepare_request(Request(prompt="task"), Settings(), stdin=BrokenStream())
+
+
+def test_reasoning_environment_and_invalid_model(monkeypatch):
+    monkeypatch.setenv("SOURCESIFT_REASONING_EFFORT", "medium")
+    assert load_settings().agent.reasoning_effort == "medium"
+    with pytest.raises(ConfigurationError, match="agent.model"):
+        load_settings(overrides={"agent": {"model": "invalid"}})
+
+
+def test_paths_retain_base_when_working_directory_changes(monkeypatch, tmp_path):
+    from sourcesift.core.config import load_settings
+
+    directory = tmp_path / "configuration"
+    directory.mkdir()
+    (directory / "context.md").write_text("background", encoding="utf-8")
+    (directory / "config.toml").write_text(
+        '[context]\nfiles=["context.md"]', encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    settings = load_settings("configuration/config.toml")
+    monkeypatch.chdir(directory)
+    prepared = prepare_request(Request(prompt="task"), settings)
+    assert prepared.context[0].text == "background"
+
+
+@pytest.mark.parametrize("name", ["\0bad", "~a-user-that-does-not-exist/context.md"])
+def test_bad_paths_produce_application_errors(name):
+    with pytest.raises(ConfigurationError):
+        load_settings(name)
+    with pytest.raises(InputError):
+        prepare_request(Request(prompt="task"), Settings(), files=[name])
+
+
+def test_configuration_directory_rejected(tmp_path):
+    with pytest.raises(ConfigurationError, match="regular"):
+        load_settings(tmp_path)
