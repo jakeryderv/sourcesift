@@ -17,7 +17,13 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+    "cyclopts>=5.2.0",
+    "platformdirs>=4.13.0",
+    "pydantic>=2.14.1",
+    "pydantic-ai-slim[openrouter]>=2.56.0",
+    "pydantic-settings>=2.16.0",
+]
 
 [project.urls]
 Repository = "https://github.com/jakeryderv/sourcesift"
@@ -33,6 +39,7 @@ dev = [
   "twine>=6.2.0,<7",
   "pytest-cov>=7.1,<8",
   "hypothesis>=6.169,<7",
+  "pytest-asyncio>=1.4.0",
 ]
 docs = [
     "mkdocs>=1.6,<2",
