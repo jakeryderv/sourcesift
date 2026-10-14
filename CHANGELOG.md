@@ -7,9 +7,12 @@ Release Please maintains this file through reviewed release PRs.
 
 ### Documentation
 
-* add design doc ([af28858](https://github.com/jakeryderv/sourcesift/commit/af288586b4f5d0639422664571ea392f3e271cb7))
-* stuff ([43171fc](https://github.com/jakeryderv/sourcesift/commit/43171fc8057b7490f4a55583d0f0654df7d826ba))
-* stuff ([69f8a3b](https://github.com/jakeryderv/sourcesift/commit/69f8a3bbdd5be8065e8ecf259b579386c067ec65))
+* Document the proposed SourceSift architecture and interfaces ([af28858](https://github.com/jakeryderv/sourcesift/commit/af288586b4f5d0639422664571ea392f3e271cb7))
+* Add the roadmap and use cases, and separate archived course documents ([43171fc](https://github.com/jakeryderv/sourcesift/commit/43171fc8057b7490f4a55583d0f0654df7d826ba))
+
+### Maintenance
+
+* Add automated release PRs, version and lockfile consistency checks, and package validation across Python 3.11–3.14.
 
 ## 0.0.1 (2026-10-14)
 
