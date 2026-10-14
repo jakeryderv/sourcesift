@@ -1,17 +1,34 @@
 [project]
 name = "sourcesift"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.0.1"
+description = "An agent for personalized newsletter and article discovery (initial scaffold)."
 readme = "README.md"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.11"
 authors = [{ name = "Jake Van Slyke", email = "jakervanslyke@gmail.com" }]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/jakeryderv/sourcesift"
+Issues = "https://github.com/jakeryderv/sourcesift/issues"
 
 [dependency-groups]
 dev = [
   "pytest>=9.1.1",
   "ruff>=0.17.0",
   "ty>=0.0.87",
+  "twine>=6.2.0,<7",
 ]
 
 [build-system]
