@@ -623,6 +623,7 @@ source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "packaging" },
     { name = "pytest" },
     { name = "ruff" },
     { name = "twine" },
@@ -633,6 +634,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "packaging", specifier = ">=26.3" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.17.0" },
     { name = "twine", specifier = ">=6.2.0,<7" },

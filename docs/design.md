@@ -1,361 +1,341 @@
-
 # SourceSift — Design Document
 
-**Python-first, plugin-driven, Rust-accelerated personalized content discovery agent.**
+**Python-first, plugin-driven research with prompt-driven source selection.**
+
+**Status:** Maintained design. The published `0.0.1` package is a scaffold; the
+architecture and examples below describe planned functionality. Product direction
+and the foundation stack are decided. Public API signatures, configuration keys,
+and limit defaults remain proposed until implemented and validated.
+
+**Related documents:** [Use cases and scope](use-cases.md),
+[implementation roadmap](roadmap.md), and [setup and releases](../README.md).
+The Markdown files directly under `docs/` are the maintained project reference;
+`docs/capstone/` contains archived course material.
 
 ## 1. Overview
 
-SourceSift discovers, extracts, evaluates, and ranks content from configurable sources based on user interests and preferences.
+SourceSift discovers, retrieves, evaluates, and synthesizes information from
+registered sources based on a user's request and optional personal context.
 
-The application provides a reusable Python SDK, extensible plugin ecosystem, and command-line interface, with optional native Rust components and a future terminal UI.
+A user should be able to ask “check news,” “check tech,” or “what developments
+matter for my work?” without selecting feeds or learning category-specific flags.
+Registered sources carry links, descriptive metadata, and brief descriptions that
+the agent uses to decide where to look.
+
+The initial application provides a Python SDK and Cyclopts CLI. Requests run
+without an application database or saved conversation history. Configuration and
+context files are supported, and each run can maintain in-memory state. In this
+design, semantic selection means interpreting the prompt against source metadata;
+it does not require embeddings, a vector database, or an exact keyword syntax.
 
 ### Project Information
 
 | Property | Decision |
 |---|---|
-| Repository / Package | `sourcesift` |
-| CLI Command | `ssift` |
-| Primary Language | Python |
-| Secondary Language | Rust (optional) |
-| Package Manager | uv (`uv init --lib`) |
-| Distribution | PyPI |
-| Agent Framework | PydanticAI |
-| Model Provider | OpenRouter |
-| CLI Framework | Cyclopts |
-| Storage | SQLite + FTS5 |
-| Architecture | Plugin-first, local-first |
+| Repository / package | `sourcesift` |
+| CLI command | `ssift` |
+| Public application object | `SourceSift` (proposed API) |
+| Core, SDK, and plugins | Python |
+| Agent runtime | PydanticAI |
+| Model provider | OpenRouter, with configurable model selection |
+| CLI framework | Cyclopts |
+| Development / distribution | uv / PyPI |
+| Initial state | Configuration files and per-run memory |
+| Future persistence | SQLite + FTS5, when justified |
+| Future TUI | Deferred; Textual versus Ratatui undecided |
+| Native optimization | Optional Rust, after profiling |
 
-## 2. Architecture
+## 2. Architecture and Request Flow
 
 ```text
-Interfaces
-├── Python CLI (Cyclopts)
-└── Rust TUI (Ratatui, later)
-          │
-          ▼
-Python Core / API / SDK
-├── Application lifecycle & configuration
-├── Plugin registry & discovery
-├── Workflow orchestration
-├── Agent integration
-└── Public SDK interfaces
-          │
-          ├── Fixed Agent Foundation
-          │   └── PydanticAI
-          │       └── OpenRouter
-          │
-          ├── Plugin Capabilities
-          │   ├── Sources
-          │   ├── Extractors
-          │   ├── Tools
-          │   ├── Workflows
-          │   ├── Rankers
-          │   └── CLI Commands
-          │
-          ├── Storage
-          │   └── SQLite + FTS5
-          │
-          └── Rust Native Modules (optional)
-              └── PyO3 / Maturin
+User request + optional context
+              │
+              ▼
+CLI / Python SDK
+              │
+              ▼
+SourceSift application
+├── Configuration and request limits
+├── Source definitions and plugin registry
+├── PydanticAI agent → OpenRouter
+│   ├── Interpret intent and select registered sources
+│   ├── Request retrieval through registered tools
+│   ├── Decide whether more evidence is needed
+│   └── Evaluate and synthesize retrieved information
+├── Python retrieval and extraction
+│   └── HTTP, feed parsing, normalization, provenance
+└── Structured result → answer, references, and limitations
 ```
 
-The Python core coordinates the application. Interfaces and plugins interact through public SDK contracts rather than directly depending on internal implementations.
+The agent may alternate between retrieval and evaluation within a bounded request.
+A single user turn can include multiple tool calls. Multi-turn conversation is a
+later interface capability, not a prerequisite for that agent loop.
 
-## 3. Core Design
+Deterministic operations remain ordinary Python: configuration loading, HTTP
+requests, parsing, normalization, deduplication within a run, and output rendering.
+The agent handles intent, semantic source selection, relevance, and synthesis.
 
-### Fixed Foundation
+Storage is an optional future extension to this path. It must not become a
+requirement for an ordinary `ssift ask` request. Local execution and configuration
+do not imply offline inference: selected context and retrieved content are sent to
+the configured model through OpenRouter.
 
-The following components remain concrete rather than interchangeable:
+## 3. Source Definitions, Retrieval, and Evidence
 
-- **Python Core:** Application lifecycle, configuration, orchestration, and plugin management.
-- **PydanticAI:** Agent execution, tool calling, structured outputs, and context management.
-- **OpenRouter:** Model provider, with configurable model selection.
-- **Cyclopts:** Python CLI framework.
-- **SQLite + FTS5:** Local persistence and full-text search.
+### Registered Source Definitions
 
-### Plugin-Driven Capabilities
+A source definition describes a publication, feed, website, or service. It carries:
 
-Application functionality is exposed through standardized plugin interfaces.
+- A stable ID and human-readable name.
+- Website, feed, or other access links.
+- A brief description of its coverage.
+- Descriptive topics, industries, language, and geographic coverage.
+- Available retrieval capabilities and any access requirements.
 
-Built-in and third-party plugins use the same contracts.
+Names, descriptions, and metadata help the agent interpret requests. Labels such
+as `tech` and `ai` can overlap; users do not need to reproduce those labels exactly.
+Configuration can enable or disable definitions, and plugins or SDK users can add
+them. Disabled definitions are excluded before agent selection.
+
+The initial curated coverage is **US national news, technology, AI, business,
+marketing, and finance**. Specific publications and endpoints will be selected and
+verified during implementation. Local and global news collections are later
+expansions. This is a collection's intended coverage, not a claim of comprehensive
+news coverage or a requirement that every topical source be US-based.
+
+### Shared Retrieval Adapters
+
+Source definitions are data. Retrieval adapters implement access methods such as
+RSS/Atom or website retrieval. Multiple definitions can share an adapter; adding
+another ordinary feed should not require a new Python plugin.
+
+Initial retrieval supports RSS/Atom, feed discovery from website URLs, direct
+article URLs, and bounded website article discovery where supported. Feed
+discovery locates access links; semantic source selection chooses which registered
+sources are relevant to the request. These are separate operations.
+
+An adapter exposes only capabilities it actually supports. A source that supplies
+recent feed entries is not assumed to provide arbitrary historical search.
+General-purpose crawling, open-web search, authenticated account integrations,
+and browser automation are outside the initial implementation.
+
+### Semantic Selection and Explicit Requests
+
+The ordinary interface is a prompt:
+
+```bash
+ssift ask "Check news"
+ssift ask "Check tech and AI for developments relevant to my work"
+ssift ask "Check business, marketing, and finance this week"
+ssift ask "Summarize this article: https://example.com/article"
+```
+
+The agent selects among enabled registered definitions using their links,
+metadata, descriptions, and the user's context. It can retrieve articles linked
+from selected feeds or pages as evidence, within the run's retrieval limits.
+
+Users can name a publication or supply a link in the prompt. A request to use only
+a named source must constrain source selection; if the source cannot be identified
+or accessed, explain the limitation instead of silently substituting others.
+This is a semantic research instruction. It does not establish a domain-level
+network sandbox, and a separate `--source` flag or domain-policy interface is not
+part of the initial CLI contract. References identify the actual publications used,
+including linked material from another publisher.
+
+### Content Items and Provenance
+
+Content items describe individual retrieved documents, independently of source
+coverage metadata. Proposed fields include an item ID, title, requested and final
+URL, source ID where known, extracted text, author, publication/update timestamps
+when available, retrieval timestamp, and extraction limitations.
+
+A source's category does not automatically classify all its articles. Preserve
+unknown dates as unknown, and distinguish when something was published from when
+SourceSift fetched it. Deduplicate repeated URLs/content within a request before
+presenting recommendations.
+
+## 4. Plugin Contracts
+
+Built-in and third-party capabilities use the same Python contracts. Start with
+source definitions, retrieval/extraction, and tools needed by the first research
+flow. Extend the contracts as concrete use cases emerge.
 
 | Capability | Responsibility |
 |---|---|
-| Source | Discover content from feeds, websites, or external services |
-| Extractor | Retrieve and normalize article content |
-| Tool | Expose callable functionality to PydanticAI agents |
-| Workflow | Coordinate processing, evaluation, and other operations |
-| Ranker | Implement relevance scoring and ranking strategies |
-| Command | Extend the `ssift` CLI |
+| Source | Register source definitions and, when necessary, custom access adapters |
+| Extractor | Normalize retrieved content and preserve provenance |
+| Tool | Expose a callable capability to the agent |
+| Workflow | Coordinate reusable research operations; introduced as needed |
+| Ranker | Customize relevance scoring; introduced as needed |
+| Command | Extend the CLI; introduced as needed |
 
-A plugin may register multiple capabilities.
-
-### Plugin System
-
-- Python-based plugin interfaces and registration.
-- Built-in functionality implemented through the same interfaces.
-- Third-party plugin discovery via Python package entry points.
-- Plugins managed through a central registry.
-- SourceSift adapts registered tools to PydanticAI internally.
-- Public plugin contracts remain independent of PydanticAI internals.
-
-Example third-party package:
+A plugin can register multiple capabilities. The application adapts tools to
+PydanticAI internally, keeping public contracts independent of framework internals.
+Third-party discovery will use Python package entry points:
 
 ```toml
 [project.entry-points."sourcesift.plugins"]
-reddit = "sourcesift_reddit:RedditPlugin"
+example = "sourcesift_example:ExamplePlugin"
 ```
 
-Advanced dependency management, sandboxing, permissions, and hot reloading are deferred.
+Discovered plugins need clear identities, duplicate-registration errors, and
+useful load-failure diagnostics. Installed, enabled plugins execute trusted Python
+code in the application process. Advanced sandboxing, permission systems,
+dependency management, and hot reloading are deferred.
 
-## 4. Content Processing Pipeline
+## 5. Configuration and User Context
 
-```text
-Configured Sources
-(RSS / Atom, websites, article URLs)
-          │
-          ▼
-Discovery & Ingestion
-          │
-          ▼
-Article Extraction
-(Normalize, deduplicate, extract metadata)
-          │
-          ▼
-Agent Evaluation
-(PydanticAI + OpenRouter)
-├── Evaluate relevance
-├── Categorize content
-├── Rank importance
-└── Retrieve additional context when needed
-          │
-          ▼
-Storage & Indexing
-(SQLite + FTS5)
-          │
-          ▼
-SDK / CLI
-(Browse, search, configure, provide feedback)
+Configuration is optional beyond the credentials needed for model access. Proposed
+mechanisms are TOML for application settings, Markdown for personal context,
+environment variables for credentials and deployment-specific settings, and Python
+objects for SDK callers. Ordinary use should not require executable Python config.
+
+Illustrative TOML, with an example model identifier rather than a promised default:
+
+```toml
+[agent]
+model = "anthropic/claude-sonnet-4.6"
+
+[context]
+files = ["context.md"]
 ```
 
-Deterministic operations use standard Python workflows. Agent execution is reserved for tasks requiring model judgment, reasoning, or conditional tool usage.
+Categories remain descriptive source metadata; users can say “check tech” directly.
+They do not need to configure topic filters before making a request.
 
-### Initial Source Support
+### Proposed Resolution Rules
 
-- RSS/Atom feeds.
-- Automatic feed discovery from website URLs.
-- Direct article URLs.
-- Basic website article discovery where supported.
+- For the same setting: built-in defaults → TOML → supported environment variables
+  → explicit CLI or SDK overrides.
+- Resolve context paths declared in TOML relative to that TOML file. Resolve paths
+  supplied on the CLI relative to the working directory.
+- Treat configured context as background; the current request determines the task.
+  Explain material conflicts instead of silently changing the requested scope.
+- Load Markdown as text, and avoid logging credentials or personal context by default.
+- Load configured context first, then explicit file inputs and piped stdin in a
+  documented order. Read stdin only when piped/redirected, so normal terminal calls
+  do not wait for input unexpectedly.
 
-General-purpose crawling, email integrations, authentication-heavy sources, and browser automation are deferred.
+Exact configuration locations, environment-variable names, and public field names
+will be settled in Phase 1. The same models should serve CLI and SDK configuration.
 
-## 5. Technology Stack
+## 6. Public SDK and CLI
 
-| Component | Technology |
+`SourceSift` is the proposed public application object. Keep the underlying
+PydanticAI agent internal. Use an async core with an explicit synchronous convenience
+method for ordinary scripts:
+
+```python
+from sourcesift import SourceSift
+
+app = SourceSift()
+result = app.run_sync("Check tech")
+print(result.answer)
+
+# In an existing async application:
+# result = await app.run("Check tech")
+```
+
+The proposed result contains answer text, references tied to retrieved items,
+retrieval failures or coverage limitations, and usage information. The CLI renders
+that result; future interfaces reuse it. These signatures and fields are design
+proposals, not implemented imports or a stable compatibility promise.
+
+Plugin registration remains available through application methods such as
+`register_source()` and `register_tool()`, with exact types defined during
+implementation.
+
+### Planned CLI
+
+```bash
+ssift ask "Check news"
+ssift ask "Check marketing for developments relevant to this project" --file project.md
+cat interests.md | ssift ask "Check tech and AI for me" > briefing.md
+ssift ask "Compare https://example.com/a and https://example.org/b"
+```
+
+Default output is readable Markdown, with a plain-text output option. Primary
+results go to stdout; diagnostics and progress go to stderr. Scripts must not need
+interactive input. A proposed exit convention is `0` for a usable result (including
+clearly disclosed partial coverage), `1` when the request cannot be completed, and
+`2` for invalid invocation/configuration. Final flag names remain to be defined.
+
+Plugin inspection, interactive chat, and any workflow commands arrive in their
+roadmap phases. Archive search and ingestion commands depend on future persistence.
+The planned entry point is `ssift = "sourcesift.cli:main"`.
+
+## 7. Grounding, Failure Handling, and Limits
+
+- Tie factual research claims to retrieved evidence and provide usable references.
+  Distinguish source reporting, the agent's interpretation, and uncertainty.
+- Resolve “today” and “this week” using a known current time and configured/local
+  time zone, and disclose the window used. Define a default window for “recent”
+  during implementation and include it in the response when relevant.
+- If evidence is missing, conflicting, stale, or inaccessible, say so. Never treat
+  retrieval time as proof that an undated article is recent.
+- Continue through individual source failures when useful evidence remains, and
+  disclose incomplete coverage. An unsupported topic/location should produce a
+  coverage limitation rather than a claim of comprehensive research.
+- Bound model requests/tool calls, sources/articles fetched, input size, HTTP
+  response size, retries, concurrency, and total execution time. Numeric defaults
+  remain proposed until tested against representative tasks.
+- Treat retrieved documents as evidence, not as instructions that can alter the
+  task, enable plugins, change configuration, or disclose credentials.
+
+## 8. Technology Stack
+
+| Component | Planned technology |
 |---|---|
-| Core / SDK | Python, Pydantic |
-| Agent Runtime | PydanticAI |
-| Model Provider | OpenRouter |
-| Workflow Orchestration | Python (`async`/`await`) |
-| CLI | Cyclopts |
-| Configuration | pydantic-settings |
-| RSS/Atom Parsing | feedparser |
-| Source Discovery | Trafilatura |
-| HTTP Requests | HTTPX |
-| Article Extraction | Trafilatura |
-| Storage | SQLite |
-| Search | SQLite FTS5 |
-| Plugin Discovery | `importlib.metadata` |
-| Testing | pytest |
-| Rust Bindings | PyO3 + Maturin (optional) |
-| TUI | Rust + Ratatui (later) |
-| Build / Distribution | uv + PyPI |
+| Core / SDK / schemas | Python, Pydantic |
+| Agent runtime / provider | PydanticAI / OpenRouter |
+| Orchestration | Python `async`/`await` |
+| CLI / configuration | Cyclopts / pydantic-settings |
+| HTTP / RSS and Atom | HTTPX / feedparser |
+| Article extraction / feed discovery | Trafilatura |
+| Plugin discovery | `importlib.metadata` |
+| Testing | pytest, with fixtures and separate live evaluations |
+| Future persistence / archive search | SQLite / FTS5 |
+| Optional native modules | PyO3 + Maturin |
+| Future TUI | Textual or Ratatui; undecided |
+| Build / distribution | uv / PyPI |
 
-## 6. Repository Structure
+## 9. Proposed Repository Structure
+
+Create modules as functionality arrives. This is a direction, not a list of empty
+packages to scaffold immediately.
 
 ```text
 sourcesift/
 ├── pyproject.toml
-├── Cargo.toml                 # Optional Rust workspace
-├── README.md
+├── README.md                 # Current setup and release instructions
 ├── docs/
-│   └── design.md
-├── src/
-│   └── sourcesift/
-│       ├── __init__.py
-│       ├── core/              # Lifecycle & orchestration
-│       ├── agents/            # PydanticAI integration
-│       ├── plugins/
-│       │   ├── base.py       # Plugin contracts
-│       │   ├── registry.py   # Registration & discovery
-│       │   └── builtin/      # Built-in capabilities
-│       ├── models/            # Data models & schemas
-│       ├── storage/           # SQLite persistence & search
-│       ├── cli/               # Cyclopts commands
-│       └── _native/           # Rust bindings (optional)
-├── rust/                      # Optional / later
-│   ├── native/                # PyO3 modules
-│   └── tui/                   # Ratatui executable
-└── tests/
+│   ├── use-cases.md           # Product behavior and scope
+│   ├── design.md              # Architecture and contracts
+│   ├── roadmap.md             # Sequence and progress
+│   └── capstone/              # Archived course material
+├── src/sourcesift/
+│   ├── __init__.py
+│   ├── core/                  # Application, configuration, orchestration
+│   ├── agents/                # PydanticAI integration
+│   ├── sources/               # Definitions and shared retrieval adapters
+│   ├── plugins/               # Contracts, registry, built-ins
+│   ├── models/                # Requests, content, evidence, results
+│   └── cli/                   # Cyclopts commands and rendering
+└── tests/                     # Fixtures and behavioral checks as features arrive
 ```
 
-## 7. Public API / SDK
+## 10. Deferred Extensions
 
-SourceSift exposes reusable Python interfaces for configuring, extending, and running the application.
+SQLite/FTS5 may later support caching, saved research, feedback, and archive search.
+Explicit user context already supports personalization without those features.
+Persistent conversations and automatic preference learning are separate additions.
 
-Illustrative usage:
+A future TUI will use the same Python session runtime. Textual and Ratatui are
+options; choose based on actual frontend needs. Ratatui would require a defined
+subprocess/IPC boundary. Rust native modules should follow measured bottlenecks,
+remain behind Python interfaces, and include a platform-wheel distribution plan.
 
-```python
-from sourcesift import Agent, Config, Source
-
-agent = Agent(config=Config())
-
-agent.add_source(Source("https://example.com/feed.xml"))
-agent.run()
-```
-
-Plugin registration example:
-
-```python
-from sourcesift import Plugin
-
-class CustomPlugin(Plugin):
-    def setup(self, app):
-        app.register_source(CustomSource())
-        app.register_tool(CustomTool())
-```
-
-These examples describe proposed interfaces, not implemented functionality.
-
-## 8. CLI
-
-The CLI is implemented in Python using Cyclopts and directly uses the SourceSift core/SDK.
-
-### Planned Commands
-
-```bash
-ssift source add https://example.com
-ssift source list
-
-ssift ingest
-ssift search "AI developments"
-
-ssift plugin list
-ssift plugin enable example
-
-ssift run daily-briefing
-ssift config
-```
-
-The plugin system may register additional commands or subcommands through SourceSift-defined interfaces.
-
-### Entry Point
-
-```toml
-[project.scripts]
-ssift = "sourcesift.cli:main"
-```
-
-## 9. Rust Integration
-
-Rust is optional and serves two distinct purposes.
-
-### Native Modules
-
-- Performance-sensitive implementations.
-- Exposed to Python through PyO3/Maturin.
-- Internal implementations remain hidden behind stable Python interfaces.
-- Introduced when beneficial rather than required from the beginning.
-
-### Terminal UI
-
-- Separate Rust frontend using Ratatui.
-- Communicates with the Python application through subprocess/IPC.
-- Uses the same core functionality as the Python CLI.
-- Deferred until the core application is functional.
-
-## 10. Initialization & Distribution
-
-Initialize the project:
-
-```bash
-uv init --lib sourcesift
-cd sourcesift
-```
-
-Install initial dependencies:
-
-```bash
-uv add "pydantic-ai-slim[openrouter]"
-uv add pydantic-settings cyclopts
-uv add httpx feedparser trafilatura
-uv add --dev pytest
-```
-
-Development:
-
-```bash
-uv run ssift --help
-```
-
-Future PyPI distribution:
-
-```bash
-uv tool install sourcesift
-ssift
-```
-
-Compiled Rust components, when introduced, will require appropriate platform-specific build and wheel distribution.
-
-## 11. Design Principles
-
-- **Python-first:** Core, SDK, plugins, and CLI use Python.
-- **Plugin-first:** Application capabilities are composable and extensible.
-- **Fixed agent foundation:** PydanticAI + OpenRouter remain the supported runtime/provider.
-- **Shared contracts:** Built-in and third-party plugins use the same interfaces.
-- **Source-agnostic:** Content retrieval is not coupled to a specific website or service.
-- **Simple orchestration:** Standard Python coordinates workflows; agents handle model-driven decisions.
-- **Extensible SDK:** Developers can implement sources, extractors, tools, workflows, rankers, and commands.
-- **Rust-accelerated:** Optional native implementations remain behind Python interfaces.
-- **Interface-independent:** CLI and future TUI reuse the same application functionality.
-- **Local-first:** SQLite persistence without requiring a server.
-- **Unified distribution:** PyPI provides the primary installation mechanism.
-
-## 12. Development Priorities
-
-1. **Core Foundation** — Configuration, lifecycle, data models, and plugin registry.
-2. **Source Plugins** — RSS/Atom feeds, website discovery, article retrieval and extraction.
-3. **Agent Integration** — PydanticAI + OpenRouter, tool registration, structured article evaluation.
-4. **Storage & Search** — SQLite persistence, deduplication, preferences, and FTS5.
-5. **Workflows** — Source ingestion, article evaluation, recommendations, and search.
-6. **Python SDK / CLI** — Public interfaces and Cyclopts commands.
-7. **Plugin Ecosystem** — Entry-point discovery, registration, and third-party extension support.
-8. **Rust Native Modules (optional)** — Optimized components using PyO3/Maturin.
-9. **Rust TUI (later)** — Ratatui frontend.
-10. **PyPI Release** — Package, test, and distribute SourceSift.
-
-## 13. Initial Scope
-
-### Included
-
-- Python core, public SDK, and CLI.
-- PydanticAI + OpenRouter.
-- Plugin registry and built-in plugins.
-- RSS/Atom, website, and article URL support.
-- Article extraction, categorization, and relevance ranking.
-- SQLite storage and full-text search.
-- User interests, preferences, and basic feedback.
-- Basic third-party plugin support.
-
-### Deferred
-
-- Email/newsletter account integrations.
-- General-purpose web crawling and browser automation.
-- Advanced preference learning.
-- Vector database and semantic search.
-- Complex multi-agent orchestration.
-- Plugin sandboxing and advanced dependency management.
-- Rust acceleration unless justified.
-- Rust TUI.
-- Web application and HTTP server.
-
+Email integrations, general crawling, browser automation, semantic/vector search,
+complex multi-agent orchestration, hosted services, and a web application remain
+deferred. Product scope is maintained in [use-cases.md](use-cases.md); sequencing
+and completion criteria belong in [roadmap.md](roadmap.md).

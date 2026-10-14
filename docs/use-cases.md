@@ -1,5 +1,14 @@
 # SourceSift — Use Cases & Product Philosophy
 
+**Status:** Maintained product reference. The published `0.0.1` package is a scaffold;
+these use cases describe intended behavior. Initial coverage and later expansions
+are distinguished below.
+
+**Related documents:** [Design and proposed interfaces](design.md),
+[implementation roadmap](roadmap.md), and [current package setup](../README.md).
+The Markdown documents directly under `docs/` describe the current project;
+`docs/capstone/` contains archived course material.
+
 ## 1. Purpose
 
 SourceSift is a source-centric, plugin-driven information agent that discovers, retrieves, and evaluates information from configurable sources.
@@ -9,7 +18,7 @@ Its purpose is to help users stay informed, investigate topics, and discover rel
 SourceSift combines:
 
 - A curated collection of useful information sources.
-- Metadata-driven source discovery and selection.
+- Prompt-driven source selection using registered links, metadata, and descriptions.
 - Agent-powered research, analysis, and synthesis.
 - User-defined context, interests, and preferences.
 - An extensible Python SDK and plugin ecosystem.
@@ -23,9 +32,22 @@ SourceSift combines:
 
 Sources are first-class components of the system.
 
-Each source describes what information it provides, which subjects and regions it covers, and how its content can be accessed.
+Each registered source carries links, descriptive metadata, and a brief description
+of what it provides. SourceSift uses those descriptions to select appropriate
+sources for the user's request.
 
-SourceSift should understand source capabilities well enough to select appropriate sources for a given request.
+The ordinary interaction should be simple:
+
+```bash
+ssift ask "Check news"
+ssift ask "Check tech"
+ssift ask "Check AI, business, marketing, and finance this week"
+```
+
+Selection is semantic: users describe what they want in natural language. They do
+not need to select feeds, know exact category names, or use a source-filter flag.
+“Tech” and “technology developments,” for example, should express similar intent.
+This does not require a semantic-search index or vector database.
 
 ### Plugin-Driven
 
@@ -56,7 +78,9 @@ SourceSift should provide useful results without requiring persistent storage or
 
 Each request can retrieve current information, evaluate it, and return a response.
 
-Caching, search indexes, historical tracking, and persistent sessions are optional future enhancements.
+Configuration and context files are compatible with this approach, as is state
+held in memory during a request. Caching, search indexes, historical tracking, and
+persistent sessions are optional future enhancements.
 
 ### Composable and Programmable
 
@@ -73,12 +97,13 @@ Each registered source can provide descriptive metadata for discovery, filtering
 | Metadata | Purpose | Examples |
 |---|---|---|
 | Name / ID | Identify the source | `example-news` |
+| Links | Locate its content | Website URL, RSS/Atom feed URL |
 | Description | Explain the source's purpose | General news coverage |
 | Type | Describe its integration | RSS, website, API |
-| Categories | Classify subject coverage | News, technology, finance |
+| Categories | Describe subject coverage | News, technology, AI, finance |
 | Industries | Identify specialized coverage | Marketing, healthcare, energy |
-| Geography | Describe geographic coverage | Local, US national, global |
-| Location | Identify geographic relevance | Oklahoma, Tulsa, United States |
+| Geography | Describe geographic coverage | US national initially; local/global collections later |
+| Location | Identify geographic relevance | United States; finer locations as coverage expands |
 | Language | Describe supported languages | English |
 | Capabilities | Describe available operations | Latest articles, search, retrieval |
 | Requirements | Describe access needs | Public, API key, authentication |
@@ -86,6 +111,9 @@ Each registered source can provide descriptive metadata for discovery, filtering
 Metadata is descriptive and extensible, rather than a rigid classification system.
 
 Sources may belong to multiple categories, industries, or geographic regions.
+These labels guide interpretation; they are not an exact-match command language.
+Many source definitions can share the same retrieval integration, such as RSS,
+without each publication requiring a separate plugin.
 
 ### Source vs. Article Metadata
 
@@ -107,7 +135,15 @@ Selection may involve:
 4. Retrieving and evaluating relevant content.
 5. Producing a grounded response with source references.
 
-Users should also be able to explicitly select or restrict sources.
+Users can also name a publication or include an article URL directly in the
+prompt. Requests to use only a named source should guide source selection, with a
+clear limitation if that source cannot be identified or accessed. Ordinary usage
+does not require a separate `--source` flag or a domain-level restriction system.
+
+Selected feeds or pages may link to articles used as evidence. Responses should
+identify the publications actually used, including linked material from another
+publisher. Selection starts with enabled registered sources or user-supplied
+links; general open-web search is outside the initial scope.
 
 ## 4. Built-In Sources
 
@@ -115,30 +151,32 @@ SourceSift should ship with a curated collection of source definitions and integ
 
 Built-in sources are configurable, optional, and implemented through the same interfaces available to third-party plugins.
 
-### General News
+### Initial Coverage
 
-Provide broad coverage of current events.
+The first curated collection covers:
 
-- **Local:** City, regional, and state coverage.
-- **National:** United States news and current events.
-- **Global:** International developments.
+- **General news:** US national news and current events.
+- **Technology.**
+- **Artificial intelligence.**
+- **Business.**
+- **Marketing.**
+- **Finance.**
 
-### Specialized Sources
+These topics can overlap. A prompt such as “check tech and AI” should draw on
+appropriate sources across both rather than forcing the user to choose a single
+category. The US national focus describes the initial general-news collection;
+it does not imply that every topical publication must be US-based.
 
-Support focused information discovery across subjects and industries.
+Specific publications and working access links will be selected during
+implementation. Start with a manageable collection and verify its usefulness and
+availability before broadening it.
 
-Initial categories may include:
+### Later Coverage
 
-- Technology and artificial intelligence.
-- Business and economics.
-- Finance and investing.
-- Marketing and advertising.
-- Science and research.
-- Healthcare.
-- Government and public policy.
-- Other user-defined categories.
-
-Sources may overlap across categories and geographic scopes.
+Local and global news collections are later additions. Other industries and
+user-defined categories can be added through configuration or plugins as useful
+sources become available. SourceSift should disclose coverage gaps rather than
+implying that the initial collection covers every topic or location.
 
 ### Source Quality
 
@@ -169,32 +207,15 @@ Context should be optional and controlled by the user.
 
 ### Configuration Philosophy
 
-Configuration should be declarative, portable, and accessible through the Python SDK.
+User context is optional. Built-in source definitions should make requests such
+as “check news” useful once model access is configured. Users can provide personal
+context in Markdown, reference it from application configuration, or supply it
+through the Python SDK. They do not need to write Python configuration for normal
+CLI use.
 
-Potential configuration mechanisms:
-
-- **TOML:** Human-readable application configuration.
-- **Markdown:** Longer-form user context and preferences.
-- **Python:** Programmatic configuration and customization.
-- **Environment variables:** API keys and environment-specific settings.
-
-A configuration file may reference external Markdown context files.
-
-The same underlying configuration models should be available programmatically through the Python SDK.
-
-### Illustrative Configuration
-
-```toml
-[agent]
-model = "anthropic/claude-sonnet-4.6"
-
-[context]
-files = ["context.md"]
-
-[sources]
-categories = ["news", "technology", "finance"]
-regions = ["us", "global"]
-```
+Application settings and enabled sources are configurable, but topic selection
+normally comes from the prompt. Configuration formats, precedence, file paths, and
+proposed SDK contracts are maintained in [design.md](design.md).
 
 Example `context.md`:
 
@@ -202,36 +223,36 @@ Example `context.md`:
 # User Context
 
 ## Background
+
 I work in technology and artificial intelligence.
 
 ## Interests
+
 - AI research and applications
 - Robotics
 - Technology industry developments
 - Business and economics
 
 ## Geographic Focus
-- Oklahoma and surrounding region
-- United States
-- Important global developments
+
+- United States national news
 
 ## Priorities
+
 Focus on significant developments, practical implications,
 and information relevant to my interests.
 ```
 
-These examples describe proposed configuration interfaces.
+This is an illustrative user-context file, not a required template.
 
-### Configuration Behavior
+### Expected Behavior
 
-- Built-in defaults provide useful out-of-the-box behavior.
-- Users can enable, disable, or configure sources.
-- Custom sources and plugins can extend the defaults.
-- CLI arguments can override relevant settings for individual requests.
-- Python API users can construct and modify configuration programmatically.
-- Markdown context files are loaded as task context, not executed as code.
-
-Python configuration should be optional rather than necessary for ordinary use.
+- Built-in defaults provide useful source coverage after model access is configured.
+- Users can enable, disable, or add sources and plugins.
+- The current prompt determines the task; configured context helps establish relevance.
+- Markdown context is read as text, and users control which files they supply.
+- Local configuration does not imply offline inference: relevant context and
+  retrieved material are sent to the configured model through OpenRouter.
 
 ## 6. Primary Use Cases
 
@@ -242,13 +263,13 @@ Python configuration should be optional rather than necessary for ordinary use.
 Example:
 
 ```bash
-ssift ask "What are the major news stories today?"
+ssift ask "Check news"
 ```
 
 Expected behavior:
 
-- Select relevant general news sources.
-- Retrieve recent reporting.
+- Select relevant sources from the initial US national news collection.
+- Retrieve recent reporting and make the time window clear.
 - Identify significant developments.
 - Summarize findings with source references.
 - Distinguish reporting from interpretation.
@@ -260,18 +281,21 @@ Expected behavior:
 Example:
 
 ```bash
-ssift ask "Any recent news about AI in healthcare?"
+ssift ask "Check tech and AI for recent developments"
 ```
 
 Expected behavior:
 
 - Identify relevant subjects and categories.
-- Select appropriate technology and healthcare sources.
+- Select appropriate registered sources using their descriptions and coverage metadata.
 - Retrieve recent information.
 - Explain significant findings and developments.
 - Provide links to supporting sources.
 
 ### UC-03 — Geographic News
+
+**Availability:** Later expansion for local/global news. Initial general-news
+coverage is US national; this example is not an initial-release promise.
 
 **User story:** As a user, I want to discover news relevant to a particular location or geographic scope.
 
@@ -288,7 +312,9 @@ Expected behavior:
 - Retrieve geographically relevant reporting.
 - Summarize local or regional developments.
 
-Geographic context may come from the prompt or explicit configuration.
+Geographic context may come from the prompt or explicit configuration. Before
+suitable local sources are available, explain the coverage gap instead of claiming
+a complete local briefing. This expansion does not require a persistent database.
 
 ### UC-04 — Personalized Relevance
 
@@ -331,25 +357,35 @@ Expected behavior:
 - Produce a grounded response.
 - Write the response to stdout.
 
-### UC-06 — Explicit Source Research
+### UC-06 — Named Sources and Direct Links
 
-**User story:** As a user, I want to restrict research to particular sources when necessary.
+**User story:** As a user, I want to name a publication or share a link in my
+request when I have particular material in mind.
 
-Example:
+Examples:
 
 ```bash
-ssift ask "Summarize recent developments" \
-    --source https://example.com/feed.xml
+ssift ask "Check business using only Example News"
+ssift ask "Summarize this article: https://example.com/article"
 ```
+
+“Example News” stands for a registered publication's name; the URL is illustrative.
 
 Expected behavior:
 
-- Use the requested source.
-- Retrieve relevant accessible content.
-- Analyze the content.
-- Provide references to retrieved material.
+- Interpret the named source or URL from the prompt.
+- Respect an explicit request to use only that source when selecting sources.
+- Explain an unknown or unavailable source rather than silently substituting another.
+- Retrieve relevant accessible content and provide references to the material used.
+- Identify the actual publisher of linked evidence.
+
+The source model remains semantic in normal usage; users do not need an additional
+source-selection flag or category syntax.
 
 ### UC-07 — Extending SourceSift
+
+**Availability:** The third-party plugin milestone extends the working built-in
+contracts; it is not a prerequisite for the first useful research request.
 
 **User story:** As a developer, I want to introduce custom sources and capabilities without modifying the application's core.
 
@@ -360,8 +396,13 @@ from sourcesift import SourceSift
 
 app = SourceSift()
 
-app.register_source(CustomSource())
-app.register_tool(CustomTool())
+# Register a definition with links, metadata, and a description.
+# custom_source_definition and custom_tool are supplied by the extension.
+app.register_source(custom_source_definition)
+app.register_tool(custom_tool)
+
+result = app.run_sync("Check tech")
+print(result.answer)
 ```
 
 Expected behavior:
@@ -390,8 +431,9 @@ Expected behavior:
 - Return useful Markdown or plain-text output.
 - Write primary results to stdout.
 - Write diagnostics and progress information to stderr.
-- Use meaningful exit codes.
+- Use documented exit codes and disclose partial coverage in the result.
 - Avoid requiring an interactive session.
+- Apply the same research and evidence expectations as direct terminal use.
 
 ## 7. Agent Responsibilities
 
@@ -441,10 +483,10 @@ These features should be added when specific use cases justify them.
 
 ### Included
 
-- Curated, configurable built-in sources.
-- RSS/Atom and direct website/article retrieval.
-- Source metadata and category-based selection.
-- Python SDK and plugin interfaces.
+- A curated collection for US national news, technology, AI, business, marketing, and finance.
+- RSS/Atom and bounded website/article retrieval.
+- Semantic selection using source links, metadata, descriptions, and the user's request.
+- Python SDK and shared built-in plugin contracts, followed by third-party plugin support.
 - PydanticAI + OpenRouter.
 - Cyclopts CLI.
 - User-defined context through configuration and Markdown.
@@ -453,28 +495,43 @@ These features should be added when specific use cases justify them.
 
 ### Deferred
 
+- Curated local and global news collections.
 - Email/newsletter account integrations.
 - Persistent article database and historical indexing.
 - Automatic user preference learning.
-- General-purpose crawling and browser automation.
+- General-purpose crawling, open-web search, and browser automation.
 - Cloud services and background scheduling.
 - Advanced plugin permissions and sandboxing.
 - Native Rust optimization.
-- Rust TUI.
+- TUI implementation; Textual versus Ratatui remains undecided.
 - Web application and HTTP server.
 
 ## 10. Success Criteria
 
-SourceSift should be considered successful when users can:
+The first useful research milestone should let a user:
 
-1. Install the package and use `ssift` without extensive setup.
-2. Ask open-ended questions about current information.
-3. Retrieve relevant content from built-in or custom sources.
-4. Narrow research by subject, industry, geography, or source.
-5. Provide personal context through simple configuration or Markdown.
-6. Receive grounded, useful responses with source references.
-7. Pipe inputs and outputs through ordinary terminal workflows.
-8. Extend the application through Python plugins and SDK interfaces.
+1. Configure model access, then ask “check news” or “check tech” without selecting feeds.
+2. Receive information from relevant registered sources within the initial coverage.
+3. Guide relevance through personal context, a document, or a more specific prompt.
+4. Name a source or supply a link naturally when particular material is desired.
+5. Receive a readable answer with references tied to retrieved evidence.
+6. Understand the response's time window, missing evidence, and coverage limitations.
+7. Pipe context and results through ordinary terminal workflows without a database.
 
-The primary measure of success is whether SourceSift consistently discovers and presents relevant, trustworthy information with minimal user effort.
+### Evidence and Failure Expectations
 
+- References identify retrieved material that supports factual research claims.
+- Publication and retrieval dates are distinguished; unknown dates remain unknown.
+- “Today” and “this week” use a known time zone and a clear date window.
+- Reporting, synthesis, conflicting accounts, and uncertainty are distinguishable.
+- Unavailable sources can produce a useful partial result with disclosed gaps.
+- Insufficient evidence or unsupported geographic coverage is stated explicitly.
+- Research runs have bounded retrieval and model use, with useful failure diagnostics.
+
+The roadmap ties these behaviors to fixture-based checks and a small live
+evaluation set. Recommendation quality is evaluated against labeled examples as
+structured briefings arrive. Plugin extensibility is verified in its own milestone;
+local/global coverage, chat, and saved archives have later completion criteria.
+
+The primary measure of success is whether SourceSift consistently discovers and
+presents relevant, well-supported information with minimal user effort.

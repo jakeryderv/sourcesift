@@ -25,6 +25,7 @@ Issues = "https://github.com/jakeryderv/sourcesift/issues"
 
 [dependency-groups]
 dev = [
+  "packaging>=26.3",
   "pytest>=9.1.1",
   "ruff>=0.17.0",
   "ty>=0.0.87",
