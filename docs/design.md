@@ -8,7 +8,7 @@ and the foundation stack are decided. Public API signatures, configuration keys,
 and limit defaults remain proposed until implemented and validated.
 
 **Related documents:** [Use cases and scope](use-cases.md),
-[implementation roadmap](roadmap.md), and [setup and releases](../README.md).
+[implementation roadmap](roadmap.md), and [setup and releases](https://github.com/jakeryderv/sourcesift#readme).
 The Markdown files directly under `docs/` are the maintained project reference;
 `docs/capstone/` contains archived course material.
 

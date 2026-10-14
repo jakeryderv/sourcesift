@@ -20,6 +20,8 @@ dist/
 .coverage.*
 htmlcov/
 coverage.xml
+.hypothesis/
+site/
 
 # Local editor and operating system files
 .DS_Store

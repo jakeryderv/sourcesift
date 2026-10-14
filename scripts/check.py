@@ -9,7 +9,9 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--python-only", action="store_true", help="Omit actionlint")
+    group.add_argument(
+        "--python-only", action="store_true", help="Omit docs build and actionlint"
+    )
     group.add_argument(
         "--quality-only",
         action="store_true",
@@ -31,7 +33,21 @@ def main() -> None:
             ]
         )
     if not args.python_only and not args.quality_only:
-        commands.append(["actionlint"])
+        commands.extend(
+            [
+                [
+                    "uv",
+                    "run",
+                    "--locked",
+                    "--group",
+                    "docs",
+                    "mkdocs",
+                    "build",
+                    "--strict",
+                ],
+                ["actionlint"],
+            ]
+        )
     for command in commands:
         print("+ " + " ".join(command), flush=True)
         subprocess.run(command, cwd=root, check=True)
