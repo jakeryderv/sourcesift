@@ -1,10 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "bootstrap-sha": "f24b15b829fc6ef82320cfb0a072f0ac73a7d47c",
+  "always-update": true,
   "packages": {
     ".": {
       "release-type": "python",
       "package-name": "sourcesift",
+      "component": "sourcesift",
       "include-component-in-tag": false,
       "include-v-in-tag": true,
       "bump-minor-pre-major": true,
