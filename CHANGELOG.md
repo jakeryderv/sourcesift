@@ -2,6 +2,15 @@
 
 Release Please maintains this file through reviewed release PRs.
 
+## [0.1.0](https://github.com/jakeryderv/sourcesift/compare/v0.0.2...v0.1.0) (2026-10-14)
+
+
+### Features
+
+* add composable ssift command line interface ([#11](https://github.com/jakeryderv/sourcesift/issues/11)) ([8c8cf13](https://github.com/jakeryderv/sourcesift/commit/8c8cf13c187e102552a47dcbbfc54de29d8b04f7))
+* add configuration and bounded request context ([#8](https://github.com/jakeryderv/sourcesift/issues/8)) ([89bb489](https://github.com/jakeryderv/sourcesift/commit/89bb48902aa24a3e1013a721861227ea38680571))
+* implement bounded OpenRouter agent SDK ([#10](https://github.com/jakeryderv/sourcesift/issues/10)) ([ebe44c5](https://github.com/jakeryderv/sourcesift/commit/ebe44c5fdf89a9007f010dc727fddf9b28168d88))
+
 ## [0.0.2](https://github.com/jakeryderv/sourcesift/compare/v0.0.1...v0.0.2) (2026-10-14)
 
 
