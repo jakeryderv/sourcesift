@@ -12,6 +12,8 @@ exposes the scaffold's `hello()` function; no stable API is promised.
 
 ## Project Documentation
 
+[Read the documentation](https://jakevanslyke.com/sourcesift/).
+
 The Markdown documents directly under `docs/` are the maintained project reference:
 
 - [Use cases and product scope](docs/use-cases.md): who SourceSift serves and how it
@@ -103,7 +105,11 @@ API Markdown when viewed on GitHub. Add public API members to the reference as t
 are implemented. Archived `docs/capstone/` files are excluded from the site.
 
 CI builds the docs once and uploads a `documentation-site` artifact for preview.
-The site is not automatically deployed to a public host.
+After a successful push CI run on the current `main` commit, **Deploy docs** publishes
+that same artifact to [GitHub Pages](https://jakevanslyke.com/sourcesift/). PR builds
+remain downloadable previews. The public site tracks development on `main`,
+independently of PyPI releases. To retry a deployment, rerun **Deploy docs** for the
+current main commit; if its artifacts have expired, rerun that commit's push CI run.
 
 ### Coverage and property tests
 
