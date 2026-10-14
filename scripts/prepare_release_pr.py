@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 
-from release_checks import RELEASE_BRANCH
+from scripts.release_checks import RELEASE_BRANCH
 
 
 def output(*args: str) -> str:

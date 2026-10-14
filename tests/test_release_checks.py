@@ -104,7 +104,7 @@ def test_release_pr_identity_and_dispatched_head(package: Path, monkeypatch) -> 
         "user": {"login": "github-actions[bot]"},
         "head": {
             "sha": "current-head",
-            "ref": "release-please--branches--main",
+            "ref": "release-please--branches--main--components--sourcesift",
             "repo": {"full_name": "jakeryderv/sourcesift"},
         },
         "base": {"sha": "base-sha", "ref": "main"},

@@ -15,7 +15,7 @@ TITLE = re.compile(
     r"(?:feat|fix|perf|deps|docs|style|refactor|test|build|ci|chore|revert)"
     r"(?:\([a-zA-Z0-9_./-]+\))?!?: \S[^\r\n]*"
 )
-RELEASE_BRANCH = "release-please--branches--main"
+RELEASE_BRANCH = "release-please--branches--main--components--sourcesift"
 
 
 def validate_title(title: str) -> None:
