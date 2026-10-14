@@ -3,7 +3,7 @@
 import os
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from platformdirs import user_config_path
 from pydantic import Field, SecretStr, ValidationError, field_validator
@@ -17,6 +17,9 @@ class AgentSettings(Contract):
     """OpenRouter model and credential. No model is selected implicitly."""
 
     model: str | None = None
+    reasoning_effort: (
+        Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None
+    ) = None
     api_key: SecretStr | None = Field(default=None, exclude=True, repr=False)
 
     @field_validator("model")
@@ -55,6 +58,7 @@ class Settings(Contract):
 class _Environment(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SOURCESIFT_", case_sensitive=True)
     MODEL: str | None = None
+    REASONING_EFFORT: str | None = None
     api_key: SecretStr | None = Field(
         default=None, validation_alias="OPENROUTER_API_KEY"
     )
@@ -124,6 +128,8 @@ def load_settings(
     agent_env = {}
     if "MODEL" in env:
         agent_env["model"] = env["MODEL"]
+    if "REASONING_EFFORT" in env:
+        agent_env["reasoning_effort"] = env["REASONING_EFFORT"]
     if "OPENROUTER_API_KEY" in env:
         agent_env["api_key"] = env["OPENROUTER_API_KEY"]
     if agent_env:

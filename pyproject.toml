@@ -19,6 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "cyclopts>=5.2.0",
+    "openai>=3.31,<4",
     "platformdirs>=4.13.0",
     "pydantic>=2.14.1",
     "pydantic-ai-slim[openrouter]>=2.56.0",
@@ -40,6 +41,7 @@ dev = [
   "pytest-cov>=7.1,<8",
   "hypothesis>=6.169,<7",
   "pytest-asyncio>=1.4.0",
+  "httpx2>=2.13,<3",
 ]
 docs = [
     "mkdocs>=1.6,<2",

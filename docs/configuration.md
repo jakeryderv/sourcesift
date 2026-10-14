@@ -1,7 +1,6 @@
 # Configuration and context
 
-Phase 1 uses one settings model for Python and the CLI. The SDK/CLI execution
-interfaces are being implemented; configuration and context loading are available.
+Phase 1 uses one settings model for Python and the CLI.
 
 ## Location and precedence
 
@@ -18,7 +17,8 @@ only that selected file is loaded. Unknown settings are rejected.
 
 ```toml
 [agent]
-model = "provider/model-id" # Replace with an available OpenRouter model ID.
+model = "openai/gpt-6.1-sol"
+reasoning_effort = "medium"
 
 [context]
 files = ["context.md"]
@@ -31,6 +31,11 @@ max_output_tokens = 2048
 ```
 
 No model is chosen implicitly. `SOURCESIFT_MODEL` overrides `[agent].model`.
+`SOURCESIFT_REASONING_EFFORT` overrides `[agent].reasoning_effort`. Effort is optional;
+omitting it uses the provider default. Accepted values are `none`, `minimal`, `low`,
+`medium`, `high`, and `xhigh`; support depends on the selected model. The example
+uses GPT-6.1 Sol at medium effort. Output token budgets can include reasoning tokens,
+so increase the cap if the model exhausts it before producing an answer.
 Set `OPENROUTER_API_KEY` in the process environment; credentials are not accepted
 in TOML. SDK callers may pass a credential explicitly. Secrets are omitted from
 settings representations and serialization. Neither credentials nor document text
