@@ -1,6 +1,6 @@
 [project]
 name = "sourcesift"
-version = "0.0.1"
+version = "0.0.2"
 description = "An agent for personalized newsletter and article discovery (initial scaffold)."
 readme = "README.md"
 requires-python = ">=3.11"
