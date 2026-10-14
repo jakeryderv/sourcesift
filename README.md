@@ -1,12 +1,26 @@
 # SourceSift
 
-SourceSift is a planned Python agent for personalized newsletter and article
-discovery: finding relevant articles, ranking recommendations, and making past
-recommendations searchable.
+SourceSift is a planned Python agent for source-aware research and personalized
+content discovery. Requests such as “check news” or “check tech” will guide source
+selection using registered links, metadata, descriptions, and optional user context.
+The first curated collection will cover US national news, technology, AI, business,
+marketing, and finance.
 
-Version **0.0.1 is an initial scaffold**. Newsletter ingestion, article retrieval,
-ranking, search, and agent behavior are not implemented yet. The current package
-only exposes the scaffold's `hello()` function; no stable API is promised.
+Version **0.0.1 is an initial scaffold**. Source selection, retrieval, research,
+and the planned `ssift` CLI are not implemented yet. The current package only
+exposes the scaffold's `hello()` function; no stable API is promised.
+
+## Project Documentation
+
+The Markdown documents directly under `docs/` are the maintained project reference:
+
+- [Use cases and product scope](docs/use-cases.md): who SourceSift serves and how it
+  should behave.
+- [Design](docs/design.md): architecture, proposed interfaces, and technical decisions.
+- [Roadmap](docs/roadmap.md): implementation order, progress, and completion criteria.
+
+Documents in `docs/capstone/` are archived course material for reference. The
+maintained documents describe the current direction.
 
 ## Installation
 
