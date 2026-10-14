@@ -15,7 +15,12 @@ from sourcesift.models import ContextDocument, Request
 
 @pytest.fixture(autouse=True)
 def isolated_settings(monkeypatch, tmp_path):
-    for name in ("SOURCESIFT_CONFIG", "SOURCESIFT_MODEL", "OPENROUTER_API_KEY"):
+    for name in (
+        "SOURCESIFT_CONFIG",
+        "SOURCESIFT_MODEL",
+        "SOURCESIFT_REASONING_EFFORT",
+        "OPENROUTER_API_KEY",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(
         "sourcesift.core.config.default_config_path", lambda: tmp_path / "absent.toml"
