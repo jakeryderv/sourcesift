@@ -9,7 +9,7 @@ Phase 0 is complete and application functionality remains planned. Examples belo
 are intended behavior, not currently available commands.
 
 **Related documents:** [Use cases and product scope](use-cases.md),
-[architecture and proposed contracts](design.md), and [setup and releases](../README.md).
+[architecture and proposed contracts](design.md), and [setup and releases](https://github.com/jakeryderv/sourcesift#readme).
 The Markdown files directly under `docs/` are the maintained project reference;
 `docs/capstone/` contains archived course material.
 

@@ -5,7 +5,7 @@ these use cases describe intended behavior. Initial coverage and later expansion
 are distinguished below.
 
 **Related documents:** [Design and proposed interfaces](design.md),
-[implementation roadmap](roadmap.md), and [current package setup](../README.md).
+[implementation roadmap](roadmap.md), and [current package setup](https://github.com/jakeryderv/sourcesift#readme).
 The Markdown documents directly under `docs/` describe the current project;
 `docs/capstone/` contains archived course material.
 

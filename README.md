@@ -18,6 +18,7 @@ The Markdown documents directly under `docs/` are the maintained project referen
   should behave.
 - [Design](docs/design.md): architecture, proposed interfaces, and technical decisions.
 - [Roadmap](docs/roadmap.md): implementation order, progress, and completion criteria.
+- [API reference](docs/reference/index.md): source-based reference rendered by MkDocs.
 
 Documents in `docs/capstone/` are archived course material for reference. The
 maintained documents describe the current direction.
@@ -64,7 +65,8 @@ uv run --locked pre-commit run --all-files --hook-stage pre-push
 ```
 
 The check command runs formatting, linting, type checks, hook configuration
-validation, offline tests, release-metadata consistency checks, and workflow linting.
+validation, offline tests, release-metadata consistency checks, a strict docs build,
+and workflow linting.
 CI runs static checks once and tests on Python 3.11–3.14, then builds and validates
 wheel/sdist distributions and installs both in fresh environments. Superseded PR
 runs are canceled; main and publishing runs remain independent. CI still enforces
@@ -84,6 +86,46 @@ uv run --locked twine check --strict dist/*
 Tests currently cover release guardrails. Add application tests alongside Phase 1
 features. Package runtime versions should be read through `importlib.metadata`
 instead of maintaining another hard-coded version in Python source.
+
+### Documentation preview
+
+Documentation dependencies live in a separate `docs` dependency group:
+
+```sh
+uv run --locked --group docs mkdocs serve
+uv run --locked --group docs mkdocs build --strict
+```
+
+MkDocs builds the maintained Markdown pages and mkdocstrings renders API reference
+content from Google-style docstrings and type annotations. The generated HTML lives
+in ignored `site/`; the reference directives in `docs/reference/` are not expanded
+API Markdown when viewed on GitHub. Add public API members to the reference as they
+are implemented. Archived `docs/capstone/` files are excluded from the site.
+
+CI builds the docs once and uploads a `documentation-site` artifact for preview.
+The site is not automatically deployed to a public host.
+
+### Coverage and property tests
+
+```sh
+uv run --locked python -m pytest -q -m 'not network' --cov --cov-report=html --cov-report=xml
+uv run --locked coverage report --include='src/sourcesift/*'
+uv run --locked coverage report --include='scripts/*'
+```
+
+Branch coverage runs on Python 3.14 in CI; the other Python jobs run ordinary tests.
+The `coverage-reports` artifact contains HTML and XML reports. Open `htmlcov/index.html`
+locally for line and branch details. Application and tooling summaries are reported
+separately, with no minimum percentage enforced until Phase 1 establishes meaningful
+application tests. The scaffold currently has no application tests; tooling coverage
+does not establish coverage of planned agent behavior.
+
+Hypothesis tests run with the ordinary offline suite. Initial properties check that
+only release PRs can change versions and that releases increase through development,
+alpha, beta, release-candidate, final, and post-release versions. CI uses a reproducible
+200-example profile per property; local runs use Hypothesis defaults and retain
+failure examples in ignored `.hypothesis/`. Add application properties alongside real
+Phase 1 behavior, retaining explicit examples and mocked-provider tests.
 
 ## GitHub Workflow
 

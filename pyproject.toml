@@ -31,6 +31,12 @@ dev = [
   "ruff>=0.17.0",
   "ty>=0.0.87",
   "twine>=6.2.0,<7",
+  "pytest-cov>=7.1,<8",
+  "hypothesis>=6.169,<7",
+]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocstrings[python]>=1.0.7,<2",
 ]
 
 [tool.ty.environment]
@@ -39,6 +45,17 @@ python-version = "3.11"
 [tool.pytest.ini_options]
 addopts = "--strict-markers"
 markers = ["network: requires external services or API credentials; opt in explicitly"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/sourcesift", "scripts"]
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+# Report only until Phase 1 establishes meaningful application coverage.
+fail_under = 0
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13.0"]
