@@ -1,6 +1,6 @@
 [project]
 name = "sourcesift"
-version = "0.0.2"
+version = "0.1.0"
 description = "A Python SDK and CLI for context-aware requests, with source-aware research in development."
 readme = "README.md"
 requires-python = ">=3.11"
