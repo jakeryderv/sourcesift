@@ -249,3 +249,15 @@ def test_truncated_answer_is_disclosed(settings, install_model):
     )
     result = SourceSift(settings).run_sync("task")
     assert any("incomplete" in limitation for limitation in result.limitations)
+
+
+def test_unusable_provider_output_is_sanitized(settings, install_model):
+    from pydantic_ai.exceptions import AgentRunError
+
+    def fail(messages, info):
+        raise AgentRunError("private response body")
+
+    install_model(fail)
+    with pytest.raises(ModelError, match="unusable response") as exc:
+        SourceSift(settings).run_sync("task")
+    assert "private response" not in str(exc.value)

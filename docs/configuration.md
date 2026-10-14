@@ -54,7 +54,7 @@ The input budget counts UTF-8 bytes in the prompt, document labels, and document
 text together. Files and stdin are read with bounded sizes. Over-limit inputs are
 rejected rather than truncated. The context count includes background files, SDK
 documents, explicit files, and a supplied stdin stream. Empty stdin adds no document.
-The configuration file itself has a 64 KiB limit.
+The configuration must be a regular file and has a 64 KiB limit.
 
 The model timeout and output cap apply to model execution. Input bytes are not
 model tokens: a model may have a smaller context window. Phase 1 makes one model

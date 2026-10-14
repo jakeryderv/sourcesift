@@ -2,10 +2,10 @@
 
 **Python-first, plugin-driven research with prompt-driven source selection.**
 
-**Status:** Maintained design. The published `0.0.1` package is a scaffold; the
-architecture and examples below describe planned functionality. Product direction
-and the foundation stack are decided. Public API signatures, configuration keys,
-and limit defaults remain proposed until implemented and validated.
+**Status:** Maintained design. Phase 1 implements the SDK, CLI, configuration, and
+supplied-context flow. Source retrieval, evidence references, and plugin interfaces
+below remain planned. Implemented contracts are documented in the [SDK](sdk.md),
+[CLI](cli.md), and [configuration](configuration.md) references.
 
 **Related documents:** [Use cases and scope](use-cases.md),
 [implementation roadmap](roadmap.md), and [setup and releases](https://github.com/jakeryderv/sourcesift#readme).
@@ -34,7 +34,7 @@ it does not require embeddings, a vector database, or an exact keyword syntax.
 |---|---|
 | Repository / package | `sourcesift` |
 | CLI command | `ssift` |
-| Public application object | `SourceSift` (proposed API) |
+| Public application object | `SourceSift` |
 | Core, SDK, and plugins | Python |
 | Agent runtime | PydanticAI |
 | Model provider | OpenRouter, with configurable model selection |
@@ -203,7 +203,7 @@ files = ["context.md"]
 Categories remain descriptive source metadata; users can say “check tech” directly.
 They do not need to configure topic filters before making a request.
 
-### Proposed Resolution Rules
+### Resolution Rules
 
 - For the same setting: built-in defaults → TOML → supported environment variables
   → explicit CLI or SDK overrides.
@@ -216,30 +216,30 @@ They do not need to configure topic filters before making a request.
   documented order. Read stdin only when piped/redirected, so normal terminal calls
   do not wait for input unexpectedly.
 
-Exact configuration locations, environment-variable names, and public field names
-will be settled in Phase 1. The same models should serve CLI and SDK configuration.
+The [configuration reference](configuration.md) defines implemented locations,
+environment variables, precedence, and limits. The CLI and SDK share these models.
 
 ## 6. Public SDK and CLI
 
-`SourceSift` is the proposed public application object. Keep the underlying
-PydanticAI agent internal. Use an async core with an explicit synchronous convenience
-method for ordinary scripts:
+`SourceSift` is the public application object. The underlying PydanticAI agent
+remains internal. An async core and synchronous convenience method serve both
+application and script callers:
 
 ```python
 from sourcesift import SourceSift
 
 app = SourceSift()
-result = app.run_sync("Check tech")
+result = app.run_sync("Summarize this document", files=["report.md"])
 print(result.answer)
 
 # In an existing async application:
-# result = await app.run("Check tech")
+# result = await app.run("Summarize this document", files=["report.md"])
 ```
 
-The proposed result contains answer text, references tied to retrieved items,
-retrieval failures or coverage limitations, and usage information. The CLI renders
-that result; future interfaces reuse it. These signatures and fields are design
-proposals, not implemented imports or a stable compatibility promise.
+The Phase 1 result contains answer text, limitations, the configured model, and
+usage information. Retrieved evidence references and retrieval failure details
+will be defined in Phase 2. The CLI renders the same result used by SDK callers.
+The API is early and may evolve before 1.0.
 
 Plugin registration remains available through application methods such as
 `register_source()` and `register_tool()`, with exact types defined during
@@ -256,13 +256,13 @@ ssift ask "Compare https://example.com/a and https://example.org/b"
 
 Default output is readable Markdown, with a plain-text output option. Primary
 results go to stdout; diagnostics and progress go to stderr. Scripts must not need
-interactive input. A proposed exit convention is `0` for a usable result (including
+interactive input. The exit convention is `0` for a usable result (including
 clearly disclosed partial coverage), `1` when the request cannot be completed, and
-`2` for invalid invocation/configuration. Final flag names remain to be defined.
+`2` for invalid invocation/configuration. See the [CLI reference](cli.md) for flags and interruption/pipe exit codes.
 
 Plugin inspection, interactive chat, and any workflow commands arrive in their
 roadmap phases. Archive search and ingestion commands depend on future persistence.
-The planned entry point is `ssift = "sourcesift.cli:main"`.
+The installed entry point is `ssift = "sourcesift.cli:main"`.
 
 ## 7. Grounding, Failure Handling, and Limits
 
@@ -278,7 +278,8 @@ The planned entry point is `ssift = "sourcesift.cli:main"`.
   coverage limitation rather than a claim of comprehensive research.
 - Bound model requests/tool calls, sources/articles fetched, input size, HTTP
   response size, retries, concurrency, and total execution time. Numeric defaults
-  remain proposed until tested against representative tasks.
+  are documented for Phase 1 in the [configuration reference](configuration.md);
+  retrieval-specific defaults will be established in Phase 2.
 - Treat retrieved documents as evidence, not as instructions that can alter the
   task, enable plugins, change configuration, or disclose credentials.
 

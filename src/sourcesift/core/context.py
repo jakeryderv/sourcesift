@@ -69,13 +69,13 @@ def prepare_request(
     consume(request.prompt)
 
     def load(path: Path, background: bool) -> None:
-        path = path.expanduser()
         try:
+            path = path.expanduser()
             if not stat.S_ISREG(path.stat().st_mode):
                 raise InputError("Context file must be a regular text file.")
             with path.open("rb") as stream:
                 text = read_text(stream, budget)
-        except OSError:
+        except (OSError, RuntimeError, ValueError):
             raise InputError(
                 "Cannot read a context file; check the path and permissions."
             ) from None
