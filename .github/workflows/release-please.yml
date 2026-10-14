@@ -51,7 +51,7 @@ jobs:
         id: release
         with:
           target-branch: main
-      - name: Refresh release lockfile and dispatch PR checks
+      - name: Refresh release lockfile
         if: steps.ready.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}

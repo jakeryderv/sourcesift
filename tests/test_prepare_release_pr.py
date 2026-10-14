@@ -33,14 +33,4 @@ def test_prepares_component_release_branch(monkeypatch) -> None:
 
     assert ("git", "fetch", "origin", branch) in commands
     assert ("uv", "lock") in commands
-    assert ("git", "push", "origin", f"HEAD:refs/heads/{branch}") in commands
-    assert commands[-1] == (
-        "gh",
-        "workflow",
-        "run",
-        "ci.yml",
-        "--ref",
-        branch,
-        "-f",
-        "pr_number=2",
-    )
+    assert commands[-1] == ("git", "push", "origin", f"HEAD:refs/heads/{branch}")
