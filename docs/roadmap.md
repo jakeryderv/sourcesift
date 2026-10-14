@@ -38,6 +38,9 @@ Completed foundation:
 - [x] Configure lint, format, type, and distribution checks in CI for Python 3.11–3.14.
 - [x] Configure GitHub Release publishing through the `pypi` trusted publisher.
 - [x] Document development and release commands in the README.
+- [x] Add release PRs, generated changelogs, and version/lockfile consistency checks.
+- [x] Add Conventional Commit PR-title checks, workflow linting, and release-guard tests.
+- [x] Require PRs and passing CI on main, use squash merges, and protect release tags.
 
 The package currently exposes only `hello()`. A successful packaging release does
 not mark any of the application milestones below complete.
