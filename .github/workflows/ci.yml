@@ -17,9 +17,14 @@ permissions:
   contents: read
   pull-requests: read
 
+# Superseded PR runs may be canceled; main and publication runs stay independent.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   policy:
-    name: Workflow and release checks
+    name: Quality, workflow, and release checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,6 +35,7 @@ jobs:
           version: "0.12.18"
           python-version: "3.14"
       - run: uv sync --locked
+      - run: uv run --locked python scripts/check.py --quality-only
       - name: Validate versions and PR policy
         env:
           GH_TOKEN: ${{ github.token }}
@@ -48,11 +54,18 @@ jobs:
             echo "PR branch dispatch requires pr_number" >&2
             exit 1
           fi
-      - name: Install pinned workflow linter
+      - name: Cache pinned workflow linter
+        id: actionlint-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/bin/actionlint
+          key: ${{ runner.os }}-${{ runner.arch }}-actionlint-1.7.12
+      - name: Install pinned workflow linter on cache miss
+        if: steps.actionlint-cache.outputs.cache-hit != 'true'
         run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - run: actionlint
+          mkdir -p "$HOME/.local/bin"
+          GOBIN="$HOME/.local/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - run: '"$HOME/.local/bin/actionlint"'
 
   check:
     name: Python ${{ matrix.python-version }}
@@ -68,7 +81,7 @@ jobs:
           version: "0.12.18"
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked
-      - run: uv run --locked python scripts/check.py --python-only
+      - run: uv run --locked python -m pytest -q -m 'not network'
 
   build:
     name: Build and validate distributions

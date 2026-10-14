@@ -45,13 +45,36 @@ installs the workflow linter; ensure its binary is on `PATH`.
 
 ```sh
 uv sync --locked
+uv run --locked pre-commit install
 uv run --locked python scripts/check.py
 ```
 
-The check command runs formatting, linting, type checks, tests, release-metadata
-consistency checks, and workflow linting. CI runs the same Python checks on
-Python 3.11–3.14, then builds and validates wheel/sdist distributions and installs
-both in fresh environments. Run distribution validation locally with:
+Install hooks once per clone. Commits run Ruff's safe lint fixes and formatting on
+staged Python files, followed by project-wide type checking targeting Python 3.11.
+If Ruff changes a file, review and stage the fixes before committing again. Pushes
+run the offline test suite and version/lockfile consistency checks. All Python tools
+use the versions in `uv.lock`. Archived files under `docs/capstone/` are excluded
+from hooks.
+
+Run either hook stage manually with:
+
+```sh
+uv run --locked pre-commit run --all-files
+uv run --locked pre-commit run --all-files --hook-stage pre-push
+```
+
+The check command runs formatting, linting, type checks, hook configuration
+validation, offline tests, release-metadata consistency checks, and workflow linting.
+CI runs static checks once and tests on Python 3.11–3.14, then builds and validates
+wheel/sdist distributions and installs both in fresh environments. Superseded PR
+runs are canceled; main and publishing runs remain independent. CI still enforces
+checks even if local hooks were not installed or were skipped.
+
+Mark future tests requiring external services or API credentials with
+`@pytest.mark.network`. Hooks and normal CI exclude them; run them explicitly with
+`uv run --locked python -m pytest -m network` when the services are configured.
+
+Run distribution validation locally with:
 
 ```sh
 uv build --no-sources
