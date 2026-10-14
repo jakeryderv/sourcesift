@@ -8,8 +8,12 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--python-only", action="store_true", help="CI matrix: omit actionlint"
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--python-only", action="store_true", help="Omit actionlint")
+    group.add_argument(
+        "--quality-only",
+        action="store_true",
+        help="Only lint, format, types, and hook configuration",
     )
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
@@ -17,10 +21,16 @@ def main() -> None:
         ["ruff", "format", "--check", "."],
         ["ruff", "check", "."],
         ["ty", "check"],
-        [sys.executable, "-m", "pytest", "-q"],
-        [sys.executable, "scripts/release_checks.py"],
+        ["pre-commit", "validate-config"],
     ]
-    if not args.python_only:
+    if not args.quality_only:
+        commands.extend(
+            [
+                [sys.executable, "-m", "pytest", "-q", "-m", "not network"],
+                [sys.executable, "scripts/release_checks.py"],
+            ]
+        )
+    if not args.python_only and not args.quality_only:
         commands.append(["actionlint"])
     for command in commands:
         print("+ " + " ".join(command), flush=True)
