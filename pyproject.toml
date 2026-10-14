@@ -24,7 +24,11 @@ dependencies = [
     "pydantic>=2.14.1",
     "pydantic-ai-slim[openrouter]>=2.56.0",
     "pydantic-settings>=2.16.0",
+    "rich>=15.0,<16",
 ]
+
+[project.scripts]
+ssift = "sourcesift.cli:main"
 
 [project.urls]
 Repository = "https://github.com/jakeryderv/sourcesift"

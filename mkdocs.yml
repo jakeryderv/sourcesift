@@ -10,6 +10,7 @@ nav:
   - Use cases: use-cases.md
   - Design: design.md
   - Roadmap: roadmap.md
+  - Command line: cli.md
   - Python SDK: sdk.md
   - Configuration: configuration.md
   - API reference: reference/index.md
