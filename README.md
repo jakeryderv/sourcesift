@@ -79,7 +79,9 @@ against updates and deletion. The `pypi` environment accepts release tags only.
 
 `pyproject.toml` is the package version source of truth. Release Please maintains a
 release PR that updates it, the release manifest, and [CHANGELOG.md](CHANGELOG.md).
-Automation refreshes `uv.lock` and starts CI on the resulting PR commit.
+Automation refreshes `uv.lock`. GitHub requires **Approve workflows** on bot-created
+or bot-updated PRs before their normal CI can run. Wait for **Prepare release** to
+finish, approve workflows on the release PR, and require its `CI` check to pass.
 Ordinary feature PRs leave those version numbers unchanged.
 
 - `fix:` and other releasable fixes produce patch releases.
@@ -97,16 +99,18 @@ Please creates the matching tag and GitHub Release. Automation then dispatches
 `pypi` Trusted Publisher. No personal access token or PyPI API token is required.
 
 The built-in GitHub token does not trigger ordinary release-event workflows, so
-release automation explicitly dispatches publication. It also dispatches release-PR
-CI after refreshing the lockfile, avoiding a manual approval dependency for the
-bot-generated PR's normal workflow event. A `workflow_run` completion for that PR
-does not trigger another release-preparation loop.
+release automation explicitly dispatches publication. The release PR's workflow
+approval is separate from approving a PR review and does not publish anything.
+Manually dispatched checks do not clear GitHub's bot-PR workflow approval gate.
+A `workflow_run` completion for that PR does not trigger another release-preparation
+loop. See [GitHub's token-trigger rules](https://docs.github.com/en/actions/concepts/security/github_token#when-github_token-triggers-workflow-runs).
 
 ### Recovery
 
 - If release preparation fails, fix the cause and rerun **Prepare release** on
   `main`. It requires a successful push CI run on the current main commit.
-- If a release PR changes during CI, rerun preparation to check its latest commit.
+- If a release PR changes during CI, wait for preparation to finish, then approve
+  its latest pending workflow run and wait for CI again.
 - If publishing fails, inspect the failed job and PyPI state before retrying. Rerun
   failed jobs to reuse the checked artifacts. Never move a published tag or change
   the contents of an already published version.

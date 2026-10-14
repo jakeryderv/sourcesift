@@ -1,4 +1,4 @@
-"""Refresh the bot's release lockfile and explicitly start CI with GITHUB_TOKEN."""
+"""Refresh the bot's release lockfile before its PR workflows are approved."""
 
 import json
 import os
@@ -56,17 +56,7 @@ def main() -> None:
         run("git", "add", "uv.lock")
         run("git", "commit", "-m", "chore: refresh release lockfile")
         run("git", "push", "origin", f"HEAD:refs/heads/{RELEASE_BRANCH}")
-    run(
-        "gh",
-        "workflow",
-        "run",
-        "ci.yml",
-        "--ref",
-        RELEASE_BRANCH,
-        "-f",
-        f"pr_number={pr['number']}",
-    )
-    print(f"Started CI for release PR #{pr['number']}")
+    print(f"Release PR #{pr['number']} is ready for workflow approval and CI")
 
 
 if __name__ == "__main__":
