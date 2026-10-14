@@ -1,4 +1,5 @@
 site_name: SourceSift
+site_url: https://jakevanslyke.com/sourcesift/
 site_description: Python-first source-aware research agent — scaffold and implementation plan
 repo_url: https://github.com/jakeryderv/sourcesift
 edit_uri: blob/main/docs/
