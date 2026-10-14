@@ -1842,6 +1842,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-ai-slim", extra = ["openrouter"] },
     { name = "pydantic-settings" },
+    { name = "rich" },
 ]
 
 [package.dev-dependencies]
@@ -1870,6 +1871,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.14.1" },
     { name = "pydantic-ai-slim", extras = ["openrouter"], specifier = ">=2.56.0" },
     { name = "pydantic-settings", specifier = ">=2.16.0" },
+    { name = "rich", specifier = ">=15.0,<16" },
 ]
 
 [package.metadata.requires-dev]
