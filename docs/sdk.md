@@ -85,7 +85,7 @@ the application's registry for future runs. IDs, names, and aliases must be uniq
 An omitted feed enables discovery of declared RSS/Atom links from `website`.
 `capabilities=("feed",)` disables article follow-ups through that source.
 Additions and disabled IDs can also be configured in TOML. Executable plugin
-registration/discovery remains Phase 3.
+registration/discovery remains Phase 5.
 
 Catch `ConfigurationError` or `InputError` to correct local input, and `ModelError`
 for timeout, provider, or unusable-output failures. All derive from
@@ -94,3 +94,33 @@ retry failed provider requests or print provider response bodies in errors. One
 citation-validation repair is allowed within the model-request budget. Individual
 retrieval failures appear as limitations; an entirely unsuccessful research run
 returns an explicit inability to verify current information.
+
+## Interactive sessions
+
+```python
+from sourcesift import SourceSift
+
+app = SourceSift()
+session = app.session(files=["project.md"])
+# Inside an async function:
+first = await session.run("Check tech and AI")
+second = await session.run("Read the second article in more detail")
+print(second.answer, second.references)
+session.reset()  # clears history and reloads configured/initial context files
+```
+
+Sessions are independent, in-memory objects. `session.turns` returns completed
+prompt/result pairs and `session.context` shows the context snapshot. Settings and
+source registration are snapshotted at creation; create a new session to change them.
+Additional `files=` or `Request.context` on a turn become part of its history.
+
+An optional synchronous `on_event` callback receives `SessionEvent` values:
+`status` reports progress, `draft` appends provisional text, and `reset` clears the
+previous draft (including citation-repair attempts). Keep callbacks short and
+nonblocking; the returned `Result` is authoritative. Passing a callback enables
+model streaming. Cancellation uses ordinary asyncio task cancellation and propagates
+`CancelledError`. Errors/cancellation preserve prior turns, and concurrent calls
+on the same session raise `InputError`. Reset while busy also raises `InputError`.
+
+Limits on turns and serialized context require an explicit new session when full;
+there is no automatic summarization, persistence, or resume. See [chat](chat.md).

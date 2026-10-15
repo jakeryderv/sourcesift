@@ -33,6 +33,77 @@ from sourcesift.retrieval.research import Research, make_window
 from sourcesift.retrieval.urls import RetrievalError, normalize_url
 from sourcesift.sources import BUILTIN_SOURCES
 
+
+@pytest.mark.asyncio
+async def test_retained_ids_refresh_and_new_evidence_have_per_turn_budgets():
+    settings = Settings(limits=Limits(max_items=1))
+    fetcher = AsyncMock()
+    fetcher.get.return_value = page(feed(entry()))
+    first = Research(settings, SourceRegistry([SOURCE]), fetcher, "news", now=NOW)
+    await first.research(["fixture"], [], [], "any")
+    old = next(iter(first.all_evidence.values()))
+    assert old.id == "S1"
+    second = Research(
+        settings,
+        SourceRegistry([SOURCE]),
+        fetcher,
+        "news",
+        now=NOW,
+        previous=first.all_evidence,
+        next_id=first.next_id,
+    )
+    fetcher.get.return_value = page(
+        feed(
+            entry(
+                url="https://example.com/new",
+                title="New story",
+                summary="Different report",
+            )
+        )
+    )
+    await second.research(["fixture"], [], [], "any")
+    assert len(second.evidence) == 1 and len(second.all_evidence) == 2
+    assert (
+        second.references("Old [S1] and new [S2]")[1].url == "https://example.com/new"
+    )
+    third = Research(
+        settings,
+        SourceRegistry([SOURCE]),
+        fetcher,
+        "refresh",
+        now=NOW,
+        previous=second.all_evidence,
+        next_id=second.next_id,
+    )
+    fetcher.get.return_value = page(feed(entry(summary="Updated library report")))
+    await third.research(["fixture"], [], [], "any")
+    refreshed = third.all_evidence[old.url]
+    assert refreshed.id == old.id and "Updated" in refreshed.text
+    assert third.next_id == 3 and old.text != refreshed.text
+
+
+@pytest.mark.asyncio
+async def test_retained_article_rechecks_named_source_constraints():
+    fetcher = AsyncMock()
+    fetcher.get.return_value = page(feed(entry()))
+    first = Research(Settings(), SourceRegistry([SOURCE]), fetcher, "news", now=NOW)
+    await first.research(["fixture"], [], [], "any")
+    second = Research(
+        Settings(),
+        SourceRegistry([SOURCE]),
+        fetcher,
+        "Only unknown",
+        now=NOW,
+        previous=first.all_evidence,
+        next_id=first.next_id,
+    )
+    fetcher.get.reset_mock()
+    await second.research([], [], ["Unknown"], "any")
+    reply = await second.read_article("https://example.com/story")
+    fetcher.get.assert_not_called()
+    assert "outside" in str(reply["limitations"])
+
+
 NOW = datetime(2026, 10, 14, 16, tzinfo=UTC)
 SOURCE = Source(
     id="fixture",

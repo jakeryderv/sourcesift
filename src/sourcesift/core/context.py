@@ -3,7 +3,7 @@
 import stat
 from collections.abc import Sequence
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Literal
 
 from sourcesift.core.config import Settings
 from sourcesift.errors import InputError
@@ -60,6 +60,8 @@ def prepare_request(
         documents.append(document)
 
     paths = [(Path(p), "background") for p in settings.context.files]
+    if settings.context.instructions_file is not None:
+        paths.append((settings.context.instructions_file, "guidance"))
     paths.extend((Path(p), "document") for p in files)
     if (
         len(paths) + len(request.context) + (stdin is not None)
@@ -68,7 +70,7 @@ def prepare_request(
         raise InputError("Too many context inputs; check limits.max_context_files.")
     consume(request.prompt)
 
-    def load(path: Path, background: bool) -> None:
+    def load(path: Path, role: Literal["background", "document", "guidance"]) -> None:
         try:
             path = path.expanduser()
             if not stat.S_ISREG(path.stat().st_mode):
@@ -83,16 +85,18 @@ def prepare_request(
             ContextDocument(
                 name=path.name,
                 text=text,
-                role="background" if background else "document",
+                role=role,
             )
         )
 
+    if settings.context.instructions_file is not None:
+        load(settings.context.instructions_file, "guidance")
     for path in settings.context.files:
-        load(path, True)
+        load(path, "background")
     for document in request.context:
         append(document)
     for path in files:
-        load(Path(path), False)
+        load(Path(path), "document")
     if stdin is not None:
         try:
             text = read_text(stdin, budget)

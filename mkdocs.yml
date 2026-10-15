@@ -10,6 +10,7 @@ nav:
   - Use cases: use-cases.md
   - Design: design.md
   - Roadmap: roadmap.md
+  - Interactive chat: chat.md
   - Command line: cli.md
   - Python SDK: sdk.md
   - Research and sources: research.md

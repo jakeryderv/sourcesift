@@ -2,8 +2,8 @@
 
 **Python-first, plugin-driven research with prompt-driven source selection.**
 
-**Status:** Phases 1 and 2 implement the SDK, CLI, supplied context, registered
-sources, bounded retrieval, and evidence references. Executable plugins and later
+**Status:** Phases 1–3 implement the SDK, CLI, supplied context, registered
+sources, bounded retrieval, evidence references, and interactive terminal chat. Executable plugins and later
 roadmap capabilities remain planned. Current contracts are documented in the
 [SDK](sdk.md), [CLI](cli.md), [research](research.md), and
 [configuration](configuration.md) references.
@@ -43,7 +43,7 @@ it does not require embeddings, a vector database, or an exact keyword syntax.
 | Development / distribution | uv / PyPI |
 | Initial state | Configuration files and per-run memory |
 | Future persistence | SQLite + FTS5, when justified |
-| Future TUI | Deferred; Textual versus Ratatui undecided |
+| Terminal UI | Textual + Rich + asyncio |
 | Native optimization | Optional Rust, after profiling |
 
 ## 2. Architecture and Request Flow
@@ -52,7 +52,7 @@ it does not require embeddings, a vector database, or an exact keyword syntax.
 User request + optional context
               │
               ▼
-CLI / Python SDK
+CLI / Textual chat / Python SDK
               │
               ▼
 SourceSift application
@@ -69,8 +69,8 @@ SourceSift application
 ```
 
 The agent may alternate between retrieval and evaluation within a bounded request.
-A single user turn can include multiple tool calls. Multi-turn conversation is a
-later interface capability, not a prerequisite for that agent loop.
+A single user turn can include multiple tool calls. `SourceSift.session()` retains
+conversation and evidence across turns; independent `run()` calls remain stateless.
 
 Deterministic operations remain ordinary Python: configuration loading, HTTP
 requests, parsing, normalization, deduplication within a run, and output rendering.
@@ -243,7 +243,7 @@ The CLI renders the same result used by SDK callers.
 The API is early and may evolve before 1.0.
 
 `register_source(Source(...))` adds a data definition today. Executable tool
-registration and entry-point discovery remain Phase 3 work.
+registration and entry-point discovery remain Phase 5 work.
 
 ### Research CLI
 
@@ -260,9 +260,27 @@ interactive input. The exit convention is `0` for a usable result (including
 clearly disclosed partial coverage), `1` when the request cannot be completed, and
 `2` for invalid invocation/configuration. See the [CLI reference](cli.md) for flags and interruption/pipe exit codes.
 
-Plugin inspection, interactive chat, and any workflow commands arrive in their
-roadmap phases. Archive search and ingestion commands depend on future persistence.
+`ssift chat` runs a Textual interface over the shared session runtime. Plugin
+inspection and workflow commands arrive in their roadmap phases. Archive search and ingestion commands depend on future persistence.
 The installed entry point is `ssift = "sourcesift.cli:main"`.
+
+### Interactive session contract
+
+`Session` owns completed turns and a private PydanticAI history/evidence snapshot.
+Each turn runs against a copy; only a validated successful result commits. Evidence
+IDs are monotonic within a session and keep their identity when an article is read
+in more detail. Previous evidence is labeled as retained, not newly retrieved.
+Per-turn source, HTTP, tool, and model limits restart; session turn and byte limits
+bound accumulated history. Reaching them requires a new session, without silent
+truncation or model-generated memory summaries.
+
+Textual owns the terminal and event loop. Async workers call `Session.run()` and
+consume UI-independent status/draft/reset events. Drafts remain provisional until
+citation validation completes; the UI replaces them with the final `Result`, or
+discards them on error/cancellation. The core imports no Textual or Rich UI types.
+Personal guidance is explicitly selected through `[context].instructions_file`;
+other files and web content stay research material. Context is loaded once per
+session; reset reloads it atomically. See [chat](chat.md) for the user-facing contract.
 
 ## 7. Grounding, Failure Handling, and Limits
 
@@ -296,7 +314,7 @@ The installed entry point is `ssift = "sourcesift.cli:main"`.
 | Testing | pytest, with fixtures and separate live evaluations |
 | Future persistence / archive search | SQLite / FTS5 |
 | Optional native modules | PyO3 + Maturin |
-| Future TUI | Textual or Ratatui; undecided |
+| Terminal UI | Textual + Rich + asyncio |
 | Build / distribution | uv / PyPI |
 
 ## 9. Proposed Repository Structure
@@ -330,9 +348,8 @@ SQLite/FTS5 may later support caching, saved research, feedback, and archive sea
 Explicit user context already supports personalization without those features.
 Persistent conversations and automatic preference learning are separate additions.
 
-A future TUI will use the same Python session runtime. Textual and Ratatui are
-options; choose based on actual frontend needs. Ratatui would require a defined
-subprocess/IPC boundary. Rust native modules should follow measured bottlenecks,
+The Textual TUI uses the Python session runtime directly, with asyncio workers for
+streaming and cancellation. Rust native modules should follow measured bottlenecks,
 remain behind Python interfaces, and include a platform-wheel distribution plan.
 
 Email integrations, general crawling, browser automation, semantic/vector search,

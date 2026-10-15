@@ -39,6 +39,7 @@ class ContextSettings(Contract):
     """Ordered background files, resolved relative to their configuration file."""
 
     files: tuple[Path, ...] = ()
+    instructions_file: Path | None = None
 
 
 class SourcesSettings(Contract):
@@ -60,7 +61,7 @@ class SourcesSettings(Contract):
 
 
 class Limits(Contract):
-    """Per-request limits. Byte limits count UTF-8 text, not model tokens."""
+    """Request and session limits. Byte limits count UTF-8 data, not model tokens."""
 
     max_input_bytes: int = Field(default=131072, ge=1, le=10485760)
     max_context_files: int = Field(default=16, ge=0, le=256)
@@ -77,6 +78,8 @@ class Limits(Contract):
     max_response_bytes: int = Field(default=2097152, ge=1024, le=10485760)
     max_item_chars: int = Field(default=10000, ge=100, le=50000)
     max_evidence_chars: int = Field(default=60000, ge=100, le=300000)
+    max_session_turns: int = Field(default=20, ge=1, le=100)
+    max_session_bytes: int = Field(default=524288, ge=1024, le=10485760)
 
 
 class Settings(Contract):
@@ -156,6 +159,10 @@ def load_settings(
             "Use OPENROUTER_API_KEY or an SDK override for credentials."
         )
     context = data.get("context")
+    if isinstance(context, dict) and isinstance(context.get("instructions_file"), str):
+        context["instructions_file"] = str(
+            path.parent / Path(context["instructions_file"]).expanduser()
+        )
     if isinstance(context, dict) and isinstance(context.get("files"), list):
         context["files"] = [
             str(path.parent / Path(item).expanduser())

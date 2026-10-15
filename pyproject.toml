@@ -1,7 +1,7 @@
 [project]
 name = "sourcesift"
 version = "0.2.0"
-description = "A Python SDK and CLI for prompt-driven research with registered sources and evidence-backed answers."
+description = "A terminal research agent, Python SDK, and CLI with registered sources and evidence-backed answers."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Jake Van Slyke", email = "jakervanslyke@gmail.com" }]
@@ -27,6 +27,7 @@ dependencies = [
     "pydantic-ai-slim[openrouter]>=2.56.0,<3",
     "pydantic-settings>=2.16.0,<3",
     "rich>=15.0,<16",
+    "textual>=8.2.8,<9",
     "trafilatura>=2,<3",
     "tzdata>=2026.1",
 ]

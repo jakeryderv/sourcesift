@@ -63,3 +63,10 @@ with no invented current-news briefing. A model failure still exits `1`.
 
 The default total timeout is 60 seconds. For longer research requests, increase
 `[limits].timeout_seconds` in configuration; the live evaluation uses 180 seconds.
+
+## Interactive terminal chat
+
+Run `ssift chat`, optionally with `--config`, `--model`, `--reasoning-effort`, and
+repeatable `--file/-f`. It requires terminal stdin and stdout; use `ask` for pipes.
+A bare `ssift` still shows command help. See [interactive chat](chat.md) for keys,
+personal context, cancellation, and session limits.

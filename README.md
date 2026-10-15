@@ -1,10 +1,10 @@
 # SourceSift
 
-SourceSift is a Python SDK and CLI for prompt-driven research. Requests such as
+SourceSift is a research agent with terminal chat, a Python SDK, and a one-off CLI. Requests such as
 “check news” or “check tech” select registered sources using descriptions, coverage
 metadata, and optional user context, then return answers with evidence references.
 
-**Phases 1 and 2 are implemented:** supplied-text analysis, semantic source
+**Phases 1–3 are implemented:** interactive terminal conversations, supplied-text analysis, semantic source
 selection, RSS/Atom retrieval, feed discovery, and bounded article extraction.
 The initial eight-source collection covers US national news, technology, AI,
 business, marketing, and finance. Sources and dates are explicit; missing evidence
@@ -20,7 +20,7 @@ The Markdown documents directly under `docs/` are the maintained project referen
   should behave.
 - [Design](docs/design.md): architecture, proposed interfaces, and technical decisions.
 - [Roadmap](docs/roadmap.md): implementation order, progress, and completion criteria.
-- [CLI guide](docs/cli.md), [Python SDK](docs/sdk.md), and
+- [Interactive chat](docs/chat.md), [CLI guide](docs/cli.md), [Python SDK](docs/sdk.md), and
   [configuration](docs/configuration.md): current usage and defaults.
 - [Research and sources](docs/research.md): retrieval, evidence, and evaluation contracts.
 - [API reference](docs/reference/index.md): source-based reference rendered by MkDocs.
@@ -41,6 +41,7 @@ Set `OPENROUTER_API_KEY` securely in your environment, then select a model:
 ```sh
 export SOURCESIFT_MODEL=openai/gpt-6.1-sol
 export SOURCESIFT_REASONING_EFFORT=medium
+ssift chat
 ssift ask "Check news"
 ssift ask "Check tech and AI"
 ssift ask "Summarize this document" --file report.md
@@ -55,6 +56,10 @@ result = app.run_sync("Summarize this document", files=["report.md"])
 print(result.answer)
 # Inside an async application: result = await app.run(...)
 ```
+
+In chat, use **Ctrl+S** to send, **Enter** for a newline, **Esc** to cancel,
+**Ctrl+N** for a new session, and **Ctrl+K** to inspect context. Conversations stay
+in memory; follow-ups retain evidence and citations. See the [chat guide](docs/chat.md).
 
 Context and retrieved evidence are sent to the selected model through OpenRouter.
 No model is selected implicitly. Research requires a tool-capable model. See the
