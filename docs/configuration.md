@@ -31,7 +31,9 @@ timeout_seconds = 60
 max_output_tokens = 2048
 ```
 
-No model is chosen implicitly. `SOURCESIFT_MODEL` overrides `[agent].model`.
+No model is chosen implicitly. Interactive chat opens a setup panel when the model
+or credential is missing; `/model` changes settings for that chat only. These
+changes are not written to TOML or environment files. `SOURCESIFT_MODEL` overrides `[agent].model`.
 `SOURCESIFT_REASONING_EFFORT` overrides `[agent].reasoning_effort`. Effort is optional;
 omitting it uses the provider default. Accepted values are `none`, `minimal`, `low`,
 `medium`, `high`, and `xhigh`; support depends on the selected model. The example

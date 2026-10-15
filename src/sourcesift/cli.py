@@ -98,7 +98,10 @@ def main() -> None:
     """Run the CLI with documented exit codes and stderr diagnostics."""
     os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
     try:
-        app(sys.argv[1:])
+        arguments = sys.argv[1:]
+        if not arguments and sys.stdin.isatty() and sys.stdout.isatty():
+            arguments = ["chat"]
+        app(arguments)
     except CycloptsError as exc:
         print(f"ssift: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
@@ -139,7 +142,6 @@ def chat(
         raise InputError(
             "ssift chat requires an interactive terminal; use ssift ask for pipes."
         )
-    from sourcesift.agents.runtime import validate_model_access
     from sourcesift.tui import ChatApp
 
     overrides = {}
@@ -148,5 +150,4 @@ def chat(
     if reasoning_effort is not None:
         overrides["reasoning_effort"] = reasoning_effort
     settings = load_settings(config, overrides={"agent": overrides})
-    validate_model_access(settings)
     ChatApp(SourceSift(settings).session(files=file or ())).run()

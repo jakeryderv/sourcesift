@@ -68,5 +68,7 @@ The default total timeout is 60 seconds. For longer research requests, increase
 
 Run `ssift chat`, optionally with `--config`, `--model`, `--reasoning-effort`, and
 repeatable `--file/-f`. It requires terminal stdin and stdout; use `ask` for pipes.
-A bare `ssift` still shows command help. See [interactive chat](chat.md) for keys,
-personal context, cancellation, and session limits.
+A bare `ssift` opens chat when stdin and stdout are terminals; otherwise it shows
+help. `ssift --help` always shows help. Missing model/key settings open an in-app
+setup panel. See [interactive chat](chat.md) for fuzzy slash commands, `@` file
+attachments, personal context, cancellation, and session limits.

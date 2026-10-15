@@ -262,3 +262,22 @@ def test_closed_output_pipe(invoke, fake_run, monkeypatch):
         invoke("ask", "task")
     assert exc.value.code == 141
     assert closed == [1]
+
+
+def test_bare_terminal_opens_chat_but_help_still_works(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(sys, "argv", ["ssift"])
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("sourcesift.tui.ChatApp.run", lambda self: calls.append(self))
+    monkeypatch.setattr(cli, "load_settings", lambda *args, **kwargs: Settings())
+    cli.main()
+    assert len(calls) == 1
+    monkeypatch.setattr(sys, "argv", ["ssift", "--help"])
+    cli.main()
+    assert len(calls) == 1 and "Usage:" in capsys.readouterr().out
+
+
+def test_bare_nonterminal_shows_help(invoke, capsys):
+    invoke()
+    assert "Usage:" in capsys.readouterr().out

@@ -59,8 +59,11 @@ print(result.answer)
 
 In chat, use **Enter** to send, **Shift+Enter** for a newline (**Ctrl+J** as a
 fallback), and **Esc** to cancel. Use `/new` for a new session, `/context` to inspect
-context, and `/help` for commands. Conversations stay in memory; follow-ups retain
-evidence and citations. See the [chat guide](docs/chat.md).
+context, `/model` for session settings, and `/help` for commands. Type `/` for a
+fuzzy command picker or `@` to attach a workspace file. Accept suggestions with
+Tab/Enter, then press Enter again to submit. Bare `ssift` opens chat in a terminal.
+Conversations stay in memory; follow-ups retain evidence and citations. See the
+[chat guide](docs/chat.md).
 
 Context and retrieved evidence are sent to the selected model through OpenRouter.
 No model is selected implicitly. Research requires a tool-capable model. See the
