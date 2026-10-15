@@ -2,6 +2,13 @@
 
 Release Please maintains this file through reviewed release PRs.
 
+## [0.3.1](https://github.com/jakeryderv/sourcesift/compare/v0.3.0...v0.3.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **chat:** harden cancellation and session checks ([#17](https://github.com/jakeryderv/sourcesift/issues/17)) ([b6ffa23](https://github.com/jakeryderv/sourcesift/commit/b6ffa23b04cf77fe379466cc224c2c142d359fb0))
+
 ## [0.3.0](https://github.com/jakeryderv/sourcesift/compare/v0.2.0...v0.3.0) (2026-10-15)
 
 
