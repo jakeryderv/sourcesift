@@ -30,12 +30,14 @@ def configure(monkeypatch, respond, *, fail=False, limits=None):
 
     monkeypatch.setattr(runtime, "_openrouter_model", model)
 
+    # Publication predates the run snapshot even if retrieval crosses a second.
+    date = format_datetime(datetime.now(UTC))
+
     async def get(self, url):
         if fail:
             raise RetrievalError("HTTP 503; content unavailable.")
         assert "feeds.npr.org" in url
         self.requests += 1
-        date = format_datetime(datetime.now(UTC))
         return Page(
             url,
             url,

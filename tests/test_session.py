@@ -60,10 +60,11 @@ async def test_followups_retain_evidence_and_upgrade_second_article(
     settings, install, monkeypatch
 ):
     calls = 0
+    # Capture publication before the run clock, including across second boundaries.
+    date = format_datetime(datetime.now(UTC))
 
     async def get(self, url):
         self.requests += 1
-        date = format_datetime(datetime.now(UTC))
         if "feeds.npr" in url:
             body = f'<rss version="2.0"><channel><title>NPR</title><item><title>First story</title><link>https://www.npr.org/first</link><description>First summary.</description><pubDate>{date}</pubDate></item><item><title>Second story</title><link>https://www.npr.org/second</link><description>Second summary.</description><pubDate>{date}</pubDate></item></channel></rss>'
         else:

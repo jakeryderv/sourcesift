@@ -75,6 +75,8 @@ class ChatApp(App[None]):
         self._draft = ""
         self._rendered_draft = ""
         self._turn_active = False
+        self._turn_started = False
+        self._cancel_requested = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -137,6 +139,8 @@ class ChatApp(App[None]):
             return
         # Set before awaiting mount so two submit events cannot start two turns.
         self._turn_active = True
+        self._turn_started = False
+        self._cancel_requested = False
         editor.clear()
         transcript = self.query_one("#transcript", VerticalScroll)
         self._draft = self._rendered_draft = ""
@@ -153,7 +157,12 @@ class ChatApp(App[None]):
     @work(group="research", exit_on_error=False)
     async def _run_turn(self, prompt: str) -> None:
         try:
+            self._turn_started = True
+            if self._cancel_requested:
+                raise asyncio.CancelledError
             result = await self.session.run(prompt, on_event=self._event)
+            # The result is committed: finish rendering it even if Esc arrives now.
+            self._turn_started = False
             await self._show_result(result)
             self._status("Ready")
         except asyncio.CancelledError:
@@ -176,6 +185,7 @@ class ChatApp(App[None]):
             self._status("Turn failed")
         finally:
             self._draft_widget = None
+            self._turn_started = False
             self._turn_active = False
 
     async def _show_result(self, result: Result) -> None:
@@ -199,7 +209,11 @@ class ChatApp(App[None]):
             return
         if self._turn_active and self._turn_worker is not None:
             self._status("Cancelling…")
-            self._turn_worker.cancel()
+            self._cancel_requested = True
+            # Cancelling an unstarted asyncio task skips the coroutine's finally
+            # block. Let it start and consume the pending cancellation instead.
+            if self._turn_started:
+                self._turn_worker.cancel()
 
     async def action_new_session(self) -> None:
         if self._turn_active:
