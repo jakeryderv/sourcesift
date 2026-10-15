@@ -57,9 +57,10 @@ print(result.answer)
 # Inside an async application: result = await app.run(...)
 ```
 
-In chat, use **Ctrl+S** to send, **Enter** for a newline, **Esc** to cancel,
-**Ctrl+N** for a new session, and **Ctrl+K** to inspect context. Conversations stay
-in memory; follow-ups retain evidence and citations. See the [chat guide](docs/chat.md).
+In chat, use **Enter** to send, **Shift+Enter** for a newline (**Ctrl+J** as a
+fallback), and **Esc** to cancel. Use `/new` for a new session, `/context` to inspect
+context, and `/help` for commands. Conversations stay in memory; follow-ups retain
+evidence and citations. See the [chat guide](docs/chat.md).
 
 Context and retrieved evidence are sent to the selected model through OpenRouter.
 No model is selected implicitly. Research requires a tool-capable model. See the

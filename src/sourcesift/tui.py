@@ -3,10 +3,11 @@
 import asyncio
 from typing import ClassVar
 
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Markdown, Static, TextArea
 from textual.worker import Worker
@@ -16,7 +17,27 @@ from sourcesift.core.session import Session
 from sourcesift.errors import SourceSiftError
 from sourcesift.models import Result, SessionEvent
 
-HELP = "Ctrl+S send · Enter newline · Esc cancel · Ctrl+N new · Ctrl+K context · Ctrl+Q quit\nCommands: /new, /context, /help, /quit. Conversations stay in memory."
+HELP = "Enter send · Shift+Enter newline (Ctrl+J fallback) · Esc cancel\nCommands: /new, /context, /cancel, /help, /quit. Conversations stay in memory."
+
+
+class ChatInput(TextArea):
+    """Submit with Enter while preserving multiline editing and paste."""
+
+    class Submitted(Message):
+        """The user requested submission of the current prompt."""
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            event.stop()
+            event.prevent_default()
+            self.post_message(self.Submitted())
+        elif event.key in {"shift+enter", "alt+enter", "ctrl+j"}:
+            event.stop()
+            event.prevent_default()
+            # Use TextArea's keyboard edit path for selection and undo support.
+            await super()._on_key(events.Key("enter", "\n"))
+        else:
+            await super()._on_key(event)
 
 
 class ContextScreen(ModalScreen[None]):
@@ -60,10 +81,7 @@ class ChatApp(App[None]):
     #context-panel Static { margin-bottom: 1; }
     """
     BINDINGS: ClassVar = [
-        Binding("ctrl+s", "send", "Send", priority=True),
         Binding("escape", "cancel_turn", "Cancel", priority=True),
-        Binding("ctrl+n", "new_session", "New", priority=True),
-        Binding("ctrl+k", "show_context", "Context", priority=True),
         Binding("ctrl+q", "quit", "Quit", priority=True),
     ]
 
@@ -84,7 +102,10 @@ class ChatApp(App[None]):
             yield Static("Ask a question, then follow the evidence.", classes="label")
             yield Static(HELP, markup=False)
         yield Static("", id="status", markup=False)
-        yield TextArea(id="prompt", placeholder="Check tech and AI…  (Ctrl+S to send)")
+        yield ChatInput(
+            id="prompt",
+            placeholder="Ask anything, or /help · Enter to send · Shift+Enter for newline",
+        )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -113,12 +134,10 @@ class ChatApp(App[None]):
             self._rendered_draft = self._draft
             self.query_one("#transcript", VerticalScroll).scroll_end(animate=False)
 
+    async def on_chat_input_submitted(self) -> None:
+        await self.action_send()
+
     async def action_send(self) -> None:
-        if self._turn_active:
-            self._status(
-                "A turn is running. Esc cancels it; your next draft stays in the input."
-            )
-            return
         editor = self.query_one("#prompt", TextArea)
         prompt = editor.text.strip()
         if not prompt:
@@ -128,14 +147,23 @@ class ChatApp(App[None]):
                 await self.action_new_session()
             elif prompt == "/context":
                 self.action_show_context()
+            elif prompt == "/cancel":
+                self.action_cancel_turn()
             elif prompt == "/quit":
                 self.exit()
             elif prompt == "/help":
                 self._status(HELP)
             else:
-                self._status("Unknown command. Use /new, /context, /help, or /quit.")
+                self._status(
+                    "Unknown command. Use /new, /context, /cancel, /help, or /quit."
+                )
                 return
             editor.clear()
+            return
+        if self._turn_active:
+            self._status(
+                "A turn is running. Esc cancels it; your next draft stays in the input."
+            )
             return
         # Set before awaiting mount so two submit events cannot start two turns.
         self._turn_active = True
