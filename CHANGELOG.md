@@ -2,6 +2,13 @@
 
 Release Please maintains this file through reviewed release PRs.
 
+## [0.4.0](https://github.com/jakeryderv/sourcesift/compare/v0.3.2...v0.4.0) (2026-10-15)
+
+
+### Features
+
+* **chat:** add fuzzy command and file pickers with interactive setup ([#21](https://github.com/jakeryderv/sourcesift/issues/21)) ([f73edc2](https://github.com/jakeryderv/sourcesift/commit/f73edc2e163470d690ac886bcdc88263fd02a78b))
+
 ## [0.3.2](https://github.com/jakeryderv/sourcesift/compare/v0.3.1...v0.3.2) (2026-10-15)
 
 
