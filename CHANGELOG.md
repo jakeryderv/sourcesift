@@ -2,6 +2,13 @@
 
 Release Please maintains this file through reviewed release PRs.
 
+## [0.2.0](https://github.com/jakeryderv/sourcesift/compare/v0.1.0...v0.2.0) (2026-10-15)
+
+
+### Features
+
+* **research:** add registered sources and grounded research ([#13](https://github.com/jakeryderv/sourcesift/issues/13)) ([d4b33d4](https://github.com/jakeryderv/sourcesift/commit/d4b33d4bcba6515b760964e7bc6b24dc210a9ecc))
+
 ## [0.1.0](https://github.com/jakeryderv/sourcesift/compare/v0.0.2...v0.1.0) (2026-10-14)
 
 
