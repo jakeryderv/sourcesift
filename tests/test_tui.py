@@ -21,6 +21,14 @@ from sourcesift import (
 from sourcesift.tui import ChatApp, ContextScreen
 
 
+@pytest.fixture(autouse=True)
+def offline_model_catalog(monkeypatch):
+    async def load(self):
+        return ()
+
+    monkeypatch.setattr("sourcesift.model_catalog.ModelCatalog.load", load)
+
+
 @pytest.fixture
 def session(tmp_path):
     profile = tmp_path / "profile.md"
@@ -531,3 +539,119 @@ async def test_model_cancel_and_submit_reopens_setup():
         app._turn_active = True
         app.action_show_model()
         assert "cancel the active turn" in visible(app)
+
+
+@pytest.mark.asyncio
+async def test_model_completions_match_names_and_accept_without_apply(monkeypatch):
+    from textual.widgets import Input, OptionList
+
+    from sourcesift.model_catalog import CatalogModel
+    from sourcesift.tui_panels import ModelScreen
+
+    async def load(self):
+        return (
+            CatalogModel("example/alpha", "Alpha Research"),
+            CatalogModel("example/beta", "Beta Research"),
+            CatalogModel("openai/gpt-6.1-sol", "OpenAI: GPT-6.1 Sol"),
+            CatalogModel("upstage/solar-pro4", "Upstage: Solar Pro4"),
+        )
+
+    monkeypatch.setattr("sourcesift.model_catalog.ModelCatalog.load", load)
+    app = ChatApp(SourceSift(Settings()).session())
+    async with app.run_test(size=(100, 32)) as pilot:
+        await app.workers.wait_for_complete()
+        screen = app.screen
+        assert isinstance(screen, ModelScreen)
+        field = screen.query_one("#model-name", Input)
+        popup = screen.query_one("#model-completions", OptionList)
+        assert popup.display
+        await pilot.press("down")
+        selected = screen._matches[popup.highlighted].id
+        await pilot.press("up", "down", "tab")
+        assert field.value == selected and not popup.display
+        assert (
+            isinstance(app.screen, ModelScreen)
+            and app.session.settings.agent.model is None
+        )
+        field.value = "gpt sol"
+        await pilot.pause()
+        assert [model.id for model in screen._matches] == ["openai/gpt-6.1-sol"]
+        # Match a human-readable name using a noncontiguous fuzzy query.
+        field.value = "AlphRsrch"
+        await pilot.pause()
+        assert [model.id for model in screen._matches] == ["example/alpha"]
+        await pilot.press("enter")
+        assert field.value == "example/alpha"
+        assert (
+            isinstance(app.screen, ModelScreen)
+            and app.session.settings.agent.model is None
+        )
+        await pilot.press("tab")
+        assert not field.has_focus and not popup.display
+        field.focus()
+        field.value = "no-match/custom"
+        await pilot.pause()
+        assert not popup.display and "No matching" in visible(screen)
+        field.value = "alpha"
+        await pilot.pause()
+        await pilot.click("#model-completions", offset=(2, 1))
+        assert field.value == "example/alpha" and not popup.display
+        field.value = "research"
+        await pilot.pause()
+        await pilot.press("escape")
+        assert isinstance(app.screen, ModelScreen) and not popup.display
+        await pilot.press("escape")
+        assert not isinstance(app.screen, ModelScreen)
+
+
+@pytest.mark.asyncio
+async def test_model_completion_loading_failure_allows_manual_entry(monkeypatch):
+    from textual.widgets import Input
+
+    from sourcesift import ConfigurationError
+    from sourcesift.tui_panels import ModelScreen
+
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def load(self):
+        started.set()
+        await finish.wait()
+        raise ConfigurationError(
+            "Model catalog unavailable. Enter a provider/model ID manually."
+        )
+
+    monkeypatch.setattr("sourcesift.model_catalog.ModelCatalog.load", load)
+    app = ChatApp(SourceSift(Settings()).session())
+    async with app.run_test(size=(80, 24)) as pilot:
+        await started.wait()
+        field = app.screen.query_one("#model-name", Input)
+        await pilot.press("e", "x")
+        assert field.value == "ex"
+        finish.set()
+        await app.workers.wait_for_complete()
+        assert "catalog unavailable" in visible(app.screen)
+        field.value = "custom/manual"
+        app.screen.query_one("#model-key", Input).value = "private-key"
+        await pilot.click("#apply-model")
+        await pilot.pause()
+        assert not isinstance(app.screen, ModelScreen)
+        assert app.session.settings.agent.model == "custom/manual"
+        assert "private-key" not in visible(app)
+
+
+@pytest.mark.asyncio
+async def test_model_catalog_worker_cancelled_when_setup_closes(monkeypatch):
+    cancelled = asyncio.Event()
+
+    async def load(self):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr("sourcesift.model_catalog.ModelCatalog.load", load)
+    app = ChatApp(SourceSift(Settings()).session())
+    async with app.run_test() as pilot:
+        await pilot.press("escape")
+        await asyncio.wait_for(cancelled.wait(), 2)
+        assert not app.workers
