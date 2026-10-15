@@ -37,6 +37,30 @@ def visible(app):
 
 
 @pytest.mark.asyncio
+async def test_cancel_before_worker_starts_then_send_again(session, monkeypatch):
+    prompts = []
+
+    async def respond(prompt, *, on_event):
+        prompts.append(prompt)
+        return Result(answer="Recovered", model="example/test")
+
+    monkeypatch.setattr(session, "run", respond)
+    app = ChatApp(session)
+    async with app.run_test() as pilot:
+        app.query_one("#prompt", TextArea).load_text("Cancel immediately")
+        await app.action_send()
+        # No event-loop yield between scheduling the worker and cancellation.
+        app.action_cancel_turn()
+        await pilot.pause()
+        assert not app._turn_active and prompts == []
+        assert "Cancelled" in visible(app)
+        app.query_one("#prompt", TextArea).load_text("Try again")
+        await pilot.press("ctrl+s")
+        await app.workers.wait_for_complete()
+        assert prompts == ["Try again"] and app.query(Markdown)
+
+
+@pytest.mark.asyncio
 async def test_send_stream_context_and_new_session(session, monkeypatch):
     started, finish = asyncio.Event(), asyncio.Event()
     prompts = []
