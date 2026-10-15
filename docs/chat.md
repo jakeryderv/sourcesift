@@ -28,6 +28,18 @@ apply to the current chat and are kept in memory, including any key entered in t
 masked field. Use TOML/environment settings for defaults across launches. Changing
 models preserves completed conversation history and affects the next turn.
 
+The model field offers fuzzy completions as you type, matching model IDs and display
+names from OpenRouter's public catalog. Up/Down chooses a suggestion; Tab/Enter
+fills the field without applying settings. Click Apply when the model, effort, and
+key are ready. Esc dismisses suggestions first, then closes setup. Suggestions
+include models advertising text input/output and tool support; availability for
+your account and support for a particular reasoning effort are still provider-dependent.
+
+The catalog loads in the background with a timeout and response-size limit, using
+one public request without your API key, prompts, or context. Successful results
+are cached for this chat. If loading fails or no model matches, you can still enter
+an exact `provider/model` ID manually. Reopening `/model` retries a failed load.
+
 Try “Check tech and AI,” then “Which matters most for my project?” or “Read the
 second article.” Follow-ups use the completed conversation and its evidence.
 References below each answer include URLs, dates, and feed-summary/article status.

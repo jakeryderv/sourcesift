@@ -182,6 +182,7 @@ Prioritized before recommendation workflows:
 - [x] Add an ignore-aware `@` file picker with visible, removable per-turn attachments.
 - [x] Preserve multiline editing, unsent drafts, and local prompt recall.
 - [x] Add `/model` and initial model/key setup panels; keep changes in memory.
+- [x] Complete model IDs/names from a cached public catalog, with manual-entry fallback.
 - [x] Add discoverable help and context panels, and validate picker/cancellation behavior.
 
 ## Phase 4 — Discovery Workflows and Recommendations

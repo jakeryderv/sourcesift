@@ -39,6 +39,7 @@ from sourcesift.core.config import AgentSettings, ContextSettings
 from sourcesift.core.context import prepare_request
 from sourcesift.core.session import Session
 from sourcesift.errors import SourceSiftError
+from sourcesift.model_catalog import ModelCatalog
 from sourcesift.models import Request, Result, SessionEvent
 from sourcesift.tui_panels import HELP, HelpScreen, ModelScreen
 
@@ -109,6 +110,8 @@ class ChatApp(App[None]):
     .panel Button { dock: bottom; }
     ModelScreen .panel Static, ModelScreen .panel Input, ModelScreen .panel Select { margin-bottom: 0; }
     #model-error { color: $error; }
+    #model-completions { height: auto; max-height: 7; display: none; border: round $accent; }
+    #catalog-status { height: auto; color: $text-muted; }
     """
     BINDINGS: ClassVar = [
         Binding("escape", "cancel_turn", "Cancel", priority=True),
@@ -140,6 +143,7 @@ class ChatApp(App[None]):
         self._history: list[str] = []
         self._history_index: int | None = None
         self._history_draft = ""
+        self._model_catalog = ModelCatalog()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -521,6 +525,11 @@ class ChatApp(App[None]):
                 if select.expanded:
                     select.expanded = False
                     return
+            if (
+                isinstance(self.screen, ModelScreen)
+                and self.screen.dismiss_completions()
+            ):
+                return
             self.pop_screen()
             return
         popup = self.query_one("#completions", OptionList)
@@ -559,7 +568,10 @@ class ChatApp(App[None]):
         if self._turn_active:
             self._status("Finish or cancel the active turn before changing models.")
             return
-        self.push_screen(ModelScreen(self.session.settings.agent), self._apply_model)
+        self.push_screen(
+            ModelScreen(self.session.settings.agent, self._model_catalog),
+            self._apply_model,
+        )
 
     def _apply_model(self, agent: AgentSettings | None) -> None:
         if agent is not None:
