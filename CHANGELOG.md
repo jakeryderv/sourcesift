@@ -2,6 +2,13 @@
 
 Release Please maintains this file through reviewed release PRs.
 
+## [0.3.2](https://github.com/jakeryderv/sourcesift/compare/v0.3.1...v0.3.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* **chat:** use conventional prompt and slash command controls ([#19](https://github.com/jakeryderv/sourcesift/issues/19)) ([e9344f9](https://github.com/jakeryderv/sourcesift/commit/e9344f98d300c1d15b59e74d6f06404362709664))
+
 ## [0.3.1](https://github.com/jakeryderv/sourcesift/compare/v0.3.0...v0.3.1) (2026-10-15)
 
 
