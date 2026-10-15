@@ -2,6 +2,13 @@
 
 Release Please maintains this file through reviewed release PRs.
 
+## [0.5.0](https://github.com/jakeryderv/sourcesift/compare/v0.4.0...v0.5.0) (2026-10-15)
+
+
+### Features
+
+* **chat:** complete model IDs from the OpenRouter catalog ([#23](https://github.com/jakeryderv/sourcesift/issues/23)) ([2d269fe](https://github.com/jakeryderv/sourcesift/commit/2d269fe49d093f168325bc54c5cba219d38632bc))
+
 ## [0.4.0](https://github.com/jakeryderv/sourcesift/compare/v0.3.2...v0.4.0) (2026-10-15)
 
 
