@@ -173,6 +173,17 @@ The SDK exposes the same session behavior. One-off CLI output remains pipe-frien
 
 See [interactive chat](chat.md) for commands, limits, and session semantics.
 
+### Interactive workflow refinements
+
+Prioritized before recommendation workflows:
+
+- [x] Make bare `ssift` open chat in a terminal; keep `ask` for one-off/script use.
+- [x] Add fuzzy slash-command completion with descriptions and keyboard navigation.
+- [x] Add an ignore-aware `@` file picker with visible, removable per-turn attachments.
+- [x] Preserve multiline editing, unsent drafts, and local prompt recall.
+- [x] Add `/model` and initial model/key setup panels; keep changes in memory.
+- [x] Add discoverable help and context panels, and validate picker/cancellation behavior.
+
 ## Phase 4 — Discovery Workflows and Recommendations
 
 **Goal:** Expand the initial research flow into reusable briefings and structured

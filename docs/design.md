@@ -260,7 +260,9 @@ interactive input. The exit convention is `0` for a usable result (including
 clearly disclosed partial coverage), `1` when the request cannot be completed, and
 `2` for invalid invocation/configuration. See the [CLI reference](cli.md) for flags and interruption/pipe exit codes.
 
-`ssift chat` runs a Textual interface over the shared session runtime. Plugin
+`ssift` in a terminal, or explicit `ssift chat`, runs a Textual interface over the
+shared session runtime. Slash-command completion, an ignore-aware `@` file picker,
+and session-only model setup make chat the primary interactive entry point. Plugin
 inspection and workflow commands arrive in their roadmap phases. Archive search and ingestion commands depend on future persistence.
 The installed entry point is `ssift = "sourcesift.cli:main"`.
 
@@ -280,7 +282,10 @@ citation validation completes; the UI replaces them with the final `Result`, or
 discards them on error/cancellation. The core imports no Textual or Rich UI types.
 Personal guidance is explicitly selected through `[context].instructions_file`;
 other files and web content stay research material. Context is loaded once per
-session; reset reloads it atomically. See [chat](chat.md) for the user-facing contract.
+session; reset reloads it atomically. Selected per-turn attachments are read and
+validated at submission, with relative path labels, then passed as ordinary
+`Request.context` documents to the same session runtime. UI discovery and keyboard
+logic remain outside the core. See [chat](chat.md) for the user-facing contract.
 
 ## 7. Grounding, Failure Handling, and Limits
 
