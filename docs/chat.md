@@ -29,16 +29,30 @@ browser automatically.
 
 | Key | Action |
 |---|---|
-| Ctrl+S | Send the current input |
-| Enter | Insert a newline |
+| Enter | Send the current input or run a slash command |
+| Shift+Enter | Insert a newline |
+| Ctrl+J | Insert a newline (terminal-compatible fallback) |
+| Alt+Enter | Insert a newline when reported by the terminal |
 | Esc | Cancel the active turn, or close the context viewer |
-| Ctrl+N | Start a new session and reload context |
-| Ctrl+K | Inspect the loaded context |
 | Ctrl+Q | Quit |
 
-The input also accepts `/new`, `/context`, `/help`, and `/quit`. Only one turn runs
-at once. You may compose the next prompt while research runs; submit it after
-the current turn completes. Cancel first before starting a new session.
+Shift+Enter requires a terminal that reports modified Enter keys. If your terminal
+sends it as plain Enter, use Ctrl+J instead. Pasted multiline text stays in the
+input until you press Enter.
+
+Type a command in the prompt and press Enter:
+
+| Command | Action |
+|---|---|
+| `/new` | Start a new session and reload context |
+| `/context` | Inspect the loaded context; Esc closes the viewer |
+| `/cancel` | Cancel the active turn |
+| `/help` | Show controls and commands |
+| `/quit` | Quit |
+
+Only one turn runs at once. You may compose the next prompt while research runs;
+submit it after the current turn completes. Slash commands remain available during
+research, but cancel first before starting a new session.
 
 Streaming text is labeled as a draft. Citation repair can replace it. The final
 answer and references appear only after validation. A failed or cancelled turn is
@@ -85,8 +99,8 @@ read a repository's `AGENTS.md`, search parent directories, or learn preferences
 Background documents and fetched pages remain research material. Guidance cannot
 override grounding, network restrictions, or the current task.
 
-Context is loaded at session creation. Inspect its actual contents with Ctrl+K;
-after editing a file, Ctrl+N reloads it and clears the conversation. An unreadable
+Context is loaded at session creation. Inspect its actual contents with `/context`;
+after editing a file, `/new` reloads it and clears the conversation. An unreadable
 file leaves the current session intact. Restart chat to reload model/source/TOML
 settings. Configured paths are relative to their TOML file; `--file` paths are
 relative to the working directory. All selected context is sent to the configured

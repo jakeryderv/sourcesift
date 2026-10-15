@@ -122,7 +122,7 @@ and provider cost. The SDK validates upper bounds on every numeric budget.
 ## Session limits and context reload
 
 `ssift chat` and `app.session()` snapshot configured context and initial files at
-creation. They keep that text stable until reset. `/new` (Ctrl+N) clears completed
+creation. They keep that text stable until reset. `/new` clears completed
 history and reloads those files; an unreadable file preserves the previous session.
 Change model/source configuration by restarting chat or creating a new application.
 One-off `ask` continues to load files for each request.
