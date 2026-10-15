@@ -12,6 +12,7 @@ from sourcesift.core.config import Settings, load_settings
 from sourcesift.core.context import prepare_request
 from sourcesift.errors import ConfigurationError, InputError
 from sourcesift.models import Request, Result
+from sourcesift.sources import BUILTIN_SOURCES, Source, SourceRegistry
 
 
 class SourceSift:
@@ -43,6 +44,22 @@ class SourceSift:
             )
         )
 
+        catalog = SourceRegistry((*BUILTIN_SOURCES, *self.settings.sources.custom))
+        disabled = set(self.settings.sources.disabled)
+        if disabled - {source.id for source in catalog.list()}:
+            raise ConfigurationError("Disabled source IDs must exist in the catalog.")
+        self.registry = SourceRegistry(
+            source for source in catalog.list() if source.id not in disabled
+        )
+
+    def register_source(self, source: Source) -> None:
+        """Add a definition for future runs; duplicate identities are rejected.
+
+        Call before starting requests. Each run snapshots the immutable registry.
+        Third-party executable plugins are a later capability.
+        """
+        self.registry = SourceRegistry((*self.registry.list(), source))
+
     async def run(
         self,
         request: str | Request,
@@ -61,7 +78,7 @@ class SourceSift:
             raise InputError("Provide a nonempty prompt.") from None
         validate_model_access(self.settings)
         prepared = prepare_request(parsed, self.settings, files=files, stdin=stdin)
-        return await run_agent(prepared, self.settings)
+        return await run_agent(prepared, self.settings, self.registry)
 
     def run_sync(
         self,

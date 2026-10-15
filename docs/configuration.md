@@ -1,6 +1,6 @@
 # Configuration and context
 
-Phase 1 uses one settings model for Python and the CLI.
+The SDK and research runtime use one settings model for Python and the CLI.
 
 ## Location and precedence
 
@@ -56,8 +56,61 @@ rejected rather than truncated. The context count includes background files, SDK
 documents, explicit files, and a supplied stdin stream. Empty stdin adds no document.
 The configuration must be a regular file and has a 64 KiB limit.
 
-The model timeout and output cap apply to model execution. Input bytes are not
-model tokens: a model may have a smaller context window. Phase 1 makes one model
-request, with automatic provider and output retries disabled. All supplied text
-is sent to the selected model through OpenRouter. Local configuration does not
-mean offline inference.
+The total timeout covers model calls and retrieval within one run. The output
+cap applies to each model response. Input bytes are not model tokens: a model may
+have a smaller context window. Context and retrieved evidence are sent to the
+selected model through OpenRouter. Local configuration does not mean offline inference.
+
+## Sources and freshness
+
+```toml
+[sources]
+timezone = "America/Chicago" # default UTC; explicit IANA zone, not inferred locally
+recent_days = 7
+disabled = ["cnbc"]         # registered IDs; misspellings are errors
+
+[[sources.custom]]
+id = "example-publication"
+name = "Example Publication"
+website = "https://example.com/"
+feeds = ["https://example.com/feed.xml"] # replace with real public URLs
+description = "Research and developments in my field."
+topics = ["research"]
+geography = "United States"
+capabilities = ["feed", "article"]
+```
+
+Custom definitions participate in normal semantic selection. Duplicate IDs, names,
+or aliases are rejected. Omit `feeds` to discover declared RSS/Atom links on the
+website. `disabled` applies before selection; it is not a prompt keyword filter.
+See [research](research.md) for exact window and date rules.
+
+## Research budgets
+
+All are `[limits]` settings. Existing input limits above remain unchanged.
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `timeout_seconds` | 60 | Total wall-clock timeout for model and retrieval |
+| `max_output_tokens` | 2048 | Per-model-response output/reasoning budget |
+| `max_model_requests` | 6 | All calls, including tool continuations and citation repair |
+| `max_tool_calls` | 8 | Total agent tool calls |
+| `max_sources` | 3 | Distinct registered sources attempted |
+| `max_items` | 18 | Distinct evidence items retained |
+| `max_items_per_source` | 6 | Accepted entries per source, most recent dated first |
+| `max_articles` | 6 | Article attempts, including failures |
+| `max_http_requests` | 24 | Requests including robots and redirects |
+| `http_timeout_seconds` | 10 | One fetch, including DNS, robots, redirects, and body |
+| `max_response_bytes` | 2097152 | Decoded response-body byte limit |
+| `max_item_chars` | 10000 | Text per evidence item |
+| `max_evidence_chars` | 60000 | Total retained evidence text |
+
+HTTP and provider retries are disabled. Tools execute sequentially. HTTP allows
+at most four redirects per fetch; parsing examines at most 200 feed entries and
+discovery retains at most four declared feeds. One model retry can repair missing
+or unknown citations, within the request limit. Tool/model budget exhaustion is a
+model error; HTTP/source/evidence limits produce partial-coverage notes.
+
+For longer research, a 180-second total timeout and 4096 output tokens can help;
+these are the live evaluation settings. Raising limits increases possible latency
+and provider cost. The SDK validates upper bounds on every numeric budget.

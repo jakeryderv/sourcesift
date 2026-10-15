@@ -6,6 +6,9 @@ an OpenRouter model. For example:
 ```sh
 export SOURCESIFT_MODEL=openai/gpt-6.1-sol
 export SOURCESIFT_REASONING_EFFORT=medium
+ssift ask "Check news"
+ssift ask "Check only Ars Technica for recent AI developments"
+ssift ask "Check marketing for my project" --file project.md
 ssift ask "Summarize this document" --file report.md
 cat report.md | ssift ask "Summarize this" > summary.md
 ssift ask "Summarize this" < report.md
@@ -32,7 +35,7 @@ Configured background, explicit files, and piped stdin can be combined; see
 so an ordinary terminal call never prompts for additional input. Files and stdin
 are context for the task, not replacements for the prompt.
 
-Answers and disclosed limitations go to stdout. Errors go to stderr. There are no
+Answers, cited references, date windows, and disclosed limitations go to stdout. Errors go to stderr. There are no
 progress messages in the answer stream, and output is buffered until the request
 succeeds. Use shell redirection to save output. Plain rendering removes Markdown
 styling and may reflow text; use Markdown when preserving source formatting matters.
@@ -51,5 +54,12 @@ Missing `OPENROUTER_API_KEY` or model selection is diagnosed before inference.
 Provider authentication failures and rate limits fail without automatic retries.
 Do not put API keys in prompts, files, CLI flags, or committed configuration.
 
-Phase 1 analyzes supplied text. It cannot fetch URLs, select news sources, or
-verify current reporting. Every result includes a note about that limitation.
+Research uses the [registered source catalog](research.md); there are no topic or
+source flags. Direct public HTML URLs can be supplied in the prompt, for example
+`ssift ask "Summarize this article: https://example.com/article"` with a real URL.
+Publisher restrictions, missing dates, and partial coverage appear as notes.
+An unsuccessful retrieval returns an inability to verify information (exit `0`),
+with no invented current-news briefing. A model failure still exits `1`.
+
+The default total timeout is 60 seconds. For longer research requests, increase
+`[limits].timeout_seconds` in configuration; the live evaluation uses 180 seconds.

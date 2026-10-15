@@ -4,8 +4,8 @@
 such as “check news” and “check tech,” selects relevant registered sources, and
 returns grounded responses through a reusable SDK and composable CLI.
 
-**Status:** Phases 0 and 1 are implemented. Phase 1 supports single model requests
-with supplied context through Python and `ssift`; source retrieval starts in Phase 2.
+**Status:** Phases 0–2 are implemented: package/release tooling, supplied-context
+requests, and bounded research with registered sources and evidence references.
 Examples in later phases remain planned behavior.
 
 **Related documents:** [Use cases and product scope](use-cases.md),
@@ -96,19 +96,19 @@ retrieved evidence → useful response with references.
 
 ### Implementation
 
-- [ ] Define source records with IDs, names, links, descriptions, coverage metadata, and access capabilities.
-- [ ] Implement an in-memory source registry and minimal shared source/extractor/tool contracts.
-- [ ] Add a small verified collection covering US national news, technology, AI, business, marketing, and finance.
-- [ ] Implement HTTP retrieval, RSS/Atom parsing, feed discovery, and article extraction.
-- [ ] Reuse retrieval adapters across source records rather than requiring a plugin for every feed.
-- [ ] Select enabled registered sources semantically from the request and optional user context.
-- [ ] Recognize named publications and direct article URLs in prompts.
-- [ ] Expose bounded retrieval tools to the agent, including follow-up retrieval within one request.
-- [ ] Preserve provenance and available publication/update/retrieval timestamps.
-- [ ] Normalize content and deduplicate repeated items within a run.
-- [ ] Return references, coverage limitations, and meaningful partial-failure information.
-- [ ] Finalize freshness windows, time-zone handling, and limits on retrieval, retries, and model/tool use.
-- [ ] Add fixture-based checks and a small separately runnable live evaluation set.
+- [x] Define source records with IDs, names, links, descriptions, coverage metadata, and access capabilities.
+- [x] Implement an in-memory source registry and minimal shared source/extractor/tool contracts.
+- [x] Add a small verified collection covering US national news, technology, AI, business, marketing, and finance.
+- [x] Implement HTTP retrieval, RSS/Atom parsing, feed discovery, and article extraction.
+- [x] Reuse retrieval adapters across source records rather than requiring a plugin for every feed.
+- [x] Select enabled registered sources semantically from the request and optional user context.
+- [x] Recognize named publications and direct article URLs in prompts.
+- [x] Expose bounded retrieval tools to the agent, including follow-up retrieval within one request.
+- [x] Preserve provenance and available publication/update/retrieval timestamps.
+- [x] Normalize content and deduplicate repeated items within a run.
+- [x] Return references, coverage limitations, and meaningful partial-failure information.
+- [x] Finalize freshness windows, time-zone handling, and limits on retrieval, retries, and model/tool use.
+- [x] Add fixture-based checks and a small separately runnable live evaluation set.
 
 ### Example Usage
 
@@ -288,7 +288,7 @@ For each implemented capability:
 |---|---|---|
 | Complete | Published scaffold and CI/release foundation | 0 |
 | Complete | SDK, context, and composable CLI | 1 |
-| P0 | Semantic source selection and grounded research | 2 |
+| Complete | Semantic source selection and grounded research | 2 |
 | P1 | Third-party plugins | 3 |
 | P1 | Reusable briefings and recommendations | 4 |
 | Later | Interactive conversations | 5 |

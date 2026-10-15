@@ -6,6 +6,7 @@ from sourcesift.core.config import (
     ContextSettings,
     Limits,
     Settings,
+    SourcesSettings,
     load_settings,
 )
 from sourcesift.errors import (
@@ -14,7 +15,15 @@ from sourcesift.errors import (
     ModelError,
     SourceSiftError,
 )
-from sourcesift.models import ContextDocument, Request, Result, Usage
+from sourcesift.models import (
+    ContextDocument,
+    Reference,
+    Request,
+    ResearchWindow,
+    Result,
+    Usage,
+)
+from sourcesift.sources import Source, SourceRegistry
 
 __all__ = [
     "AgentSettings",
@@ -24,11 +33,16 @@ __all__ = [
     "InputError",
     "Limits",
     "ModelError",
+    "Reference",
     "Request",
+    "ResearchWindow",
     "Result",
     "Settings",
+    "Source",
+    "SourceRegistry",
     "SourceSift",
     "SourceSiftError",
+    "SourcesSettings",
     "Usage",
     "hello",
     "load_settings",

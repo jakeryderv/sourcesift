@@ -1,7 +1,7 @@
 # Python SDK
 
-SourceSift can analyze supplied UTF-8 text and Markdown through OpenRouter. External
-source selection, URL retrieval, and verified news research arrive in Phase 2.
+SourceSift analyzes supplied text and researches registered sources through OpenRouter.
+Use a tool-capable model for research. Each request has independent retrieval state.
 
 Set `OPENROUTER_API_KEY` securely in your environment and choose a model, for example
 `SOURCESIFT_MODEL=openai/gpt-6.1-sol` and `SOURCESIFT_REASONING_EFFORT=medium`.
@@ -41,13 +41,56 @@ Passing a resolved `Settings` object bypasses environment and config loading.
 Alternatively use `SourceSift(config_path="settings.toml", model="provider/model")`.
 Do not combine resolved settings with config/model overrides.
 
-`Result` contains `answer`, `limitations`, the configured `model`, and `usage`
-(requests, input tokens, output tokens as reported by the runtime). Phase 1 always
-reports that no external sources were retrieved. Model-generated answers are not
-proof that current facts have been verified. Retrieval references will be added
-with the evidence contracts in Phase 2.
+`Result` contains `answer`, `limitations`, configured `model`, and `usage` (model
+requests and reported input/output tokens). Research also supplies `references`,
+`selected_sources`, `window`, and `http_requests`. Citation `[S1]` corresponds to a
+`Reference` with ID `S1`. References contain actual URLs, publisher hostnames,
+registered source IDs when available, feed-summary/article kind, publication/update
+and retrieval timestamps, and extraction limitations. Only cited evidence appears
+in `references`; selected sources may include sources that failed.
+
+```python
+result = app.run_sync("Check tech and AI for this project", files=["project.md"])
+print(result.answer)
+for reference in result.references:
+    print(reference.id, reference.title, reference.url, reference.kind)
+```
+
+A supplied-text answer that uses no retrieval retains the no-retrieval limitation.
+Citations identify retrieved evidence; the model still determines whether a claim
+is supported. See [research](research.md) for safeguards and evaluation boundaries.
+
+## Source definitions
+
+```python
+from sourcesift import Source, SourceSift
+
+app = SourceSift()
+app.register_source(
+    Source(
+        id="example-publication",
+        name="Example Publication",
+        website="https://example.com/",
+        feeds=("https://example.com/feed.xml",),  # replace with a real public feed
+        description="Research and developments in my field.",
+        topics=("research",),
+        geography="United States",
+    )
+)
+print(app.registry.list())
+```
+
+Register before starting requests. Definitions are immutable; registration replaces
+the application's registry for future runs. IDs, names, and aliases must be unique.
+An omitted feed enables discovery of declared RSS/Atom links from `website`.
+`capabilities=("feed",)` disables article follow-ups through that source.
+Additions and disabled IDs can also be configured in TOML. Executable plugin
+registration/discovery remains Phase 3.
 
 Catch `ConfigurationError` or `InputError` to correct local input, and `ModelError`
 for timeout, provider, or unusable-output failures. All derive from
 `SourceSiftError`. Async cancellation propagates normally. SourceSift does not
-retry model requests automatically or print provider response bodies in errors.
+retry failed provider requests or print provider response bodies in errors. One
+citation-validation repair is allowed within the model-request budget. Individual
+retrieval failures appear as limitations; an entirely unsuccessful research run
+returns an explicit inability to verify current information.

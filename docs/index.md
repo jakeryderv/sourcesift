@@ -1,12 +1,14 @@
 # SourceSift
 
-SourceSift is a Python SDK and CLI with a planned source-aware research flow for
-“check news” and “check tech.” It will select registered sources using their
-links, metadata, descriptions, and optional user context.
+SourceSift is a Python SDK and CLI for “check news,” “check tech,” and research
+with explicit context. The model selects from registered source descriptions;
+Python retrieves and normalizes evidence, preserves provenance, and supplies
+references for the answer.
 
-Phase 1 implements single model requests with supplied text/Markdown context,
-configuration, and composable output. Source selection, URL retrieval, and verified
-current-news research are planned for Phase 2.
+Phases 1 and 2 implement supplied-text analysis and bounded research across eight
+sources covering US national news, technology, AI, business, marketing, and finance.
+See [research and sources](research.md) for the catalog, freshness rules, and limits.
+Plugin discovery, richer recommendations, and interactive sessions remain later work.
 
 Start with the [CLI guide](cli.md), [Python SDK](sdk.md), and
 [configuration reference](configuration.md).

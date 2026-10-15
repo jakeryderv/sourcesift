@@ -1,0 +1,344 @@
+{
+  "scope": "Small acceptance baseline, not a statistical quality estimate or independent human evaluation. Full publisher evidence and outputs remain in ignored local evaluation-results records.",
+  "cases": [
+    {
+      "case": {
+        "id": "news",
+        "prompt": "Check news. Give me two current US national stories with citations.",
+        "expected_any": [
+          "npr",
+          "pbs"
+        ]
+      },
+      "started_at": "2026-10-15T00:29:00.140498+00:00",
+      "model": "openai/gpt-6.1-sol",
+      "reasoning_effort": "medium",
+      "elapsed_seconds": 11.38,
+      "selected_sources": [
+        "npr",
+        "pbs"
+      ],
+      "window": {
+        "label": "recent",
+        "timezone": "UTC",
+        "start": "2026-10-08T00:29:00.147444Z",
+        "end": "2026-10-15T00:29:00.147444Z"
+      },
+      "usage": {
+        "requests": 2,
+        "input_tokens": 6378,
+        "output_tokens": 185
+      },
+      "http_requests": 4,
+      "cited_references": 2,
+      "automatic_checks": {
+        "selection": true,
+        "evidence_presence": true,
+        "fixture_contract": null
+      },
+      "agent_review": {
+        "reviewer": "Codex",
+        "relevance": "pass",
+        "citation_support": "pass",
+        "freshness_and_limitations": "pass",
+        "notes": "US national stories selected from NPR/PBS; two cited feed summaries support the reported facts."
+      }
+    },
+    {
+      "case": {
+        "id": "tech-ai",
+        "prompt": "What is new in technology and artificial intelligence? Give me two developments and explain why they matter.",
+        "expected_any": [
+          "ars-technica",
+          "techcrunch",
+          "mit-technology-review"
+        ]
+      },
+      "started_at": "2026-10-15T00:33:54.625661+00:00",
+      "model": "openai/gpt-6.1-sol",
+      "reasoning_effort": "medium",
+      "elapsed_seconds": 14.67,
+      "selected_sources": [
+        "ars-technica",
+        "techcrunch",
+        "mit-technology-review"
+      ],
+      "window": {
+        "label": "recent",
+        "timezone": "UTC",
+        "start": "2026-10-08T00:33:54.632987Z",
+        "end": "2026-10-15T00:33:54.632987Z"
+      },
+      "usage": {
+        "requests": 3,
+        "input_tokens": 23336,
+        "output_tokens": 486
+      },
+      "http_requests": 9,
+      "cited_references": 2,
+      "automatic_checks": {
+        "selection": true,
+        "evidence_presence": true,
+        "fixture_contract": true
+      },
+      "agent_review": {
+        "reviewer": "Codex",
+        "relevance": "pass",
+        "citation_support": "pass",
+        "freshness_and_limitations": "pass",
+        "notes": "Overlapping technology/AI sources selected; two article follow-ups support the facts, with implications identified as interpretation."
+      }
+    },
+    {
+      "case": {
+        "id": "context",
+        "prompt": "Find two recent developments relevant to my work, using the supplied context.",
+        "context": "I run a small US marketing agency. I care about advertising campaigns, brand strategy, and changes in marketing platforms.",
+        "expected_any": [
+          "marketing-dive"
+        ]
+      },
+      "started_at": "2026-10-15T00:34:09.301510+00:00",
+      "model": "openai/gpt-6.1-sol",
+      "reasoning_effort": "medium",
+      "elapsed_seconds": 14.74,
+      "selected_sources": [
+        "marketing-dive"
+      ],
+      "window": {
+        "label": "recent",
+        "timezone": "UTC",
+        "start": "2026-10-08T00:34:09.305882Z",
+        "end": "2026-10-15T00:34:09.305882Z"
+      },
+      "usage": {
+        "requests": 3,
+        "input_tokens": 13841,
+        "output_tokens": 563
+      },
+      "http_requests": 4,
+      "cited_references": 2,
+      "automatic_checks": {
+        "selection": true,
+        "evidence_presence": true,
+        "fixture_contract": true
+      },
+      "agent_review": {
+        "reviewer": "Codex",
+        "relevance": "pass",
+        "citation_support": "pass",
+        "freshness_and_limitations": "pass",
+        "notes": "Marketing context selected Marketing Dive; both cited articles support the facts and the response separates suggested actions."
+      }
+    },
+    {
+      "case": {
+        "id": "business-finance",
+        "prompt": "Check business and finance this week. Give me two developments, not investment advice.",
+        "expected_any": [
+          "cnbc",
+          "federal-reserve",
+          "techcrunch"
+        ]
+      },
+      "started_at": "2026-10-15T00:34:24.042547+00:00",
+      "model": "openai/gpt-6.1-sol",
+      "reasoning_effort": "medium",
+      "elapsed_seconds": 16.54,
+      "selected_sources": [
+        "cnbc",
+        "federal-reserve",
+        "pbs"
+      ],
+      "window": {
+        "label": "this_week",
+        "timezone": "UTC",
+        "start": "2026-10-12T00:00:00Z",
+        "end": "2026-10-15T00:34:24.045706Z"
+      },
+      "usage": {
+        "requests": 3,
+        "input_tokens": 18723,
+        "output_tokens": 388
+      },
+      "http_requests": 8,
+      "cited_references": 2,
+      "automatic_checks": {
+        "selection": true,
+        "evidence_presence": true,
+        "fixture_contract": true
+      },
+      "agent_review": {
+        "reviewer": "Codex",
+        "relevance": "pass",
+        "citation_support": "pass",
+        "freshness_and_limitations": "pass",
+        "notes": "CNBC, Federal Reserve, and PBS selected. No current Fed items were accepted. One extracted article and one feed summary support the claims; failed PBS article extraction is disclosed. International business coverage is within this topic request."
+      }
+    },
+    {
+      "case": {
+        "id": "named-only",
+        "prompt": "Check only Ars Technica for recent AI or computing developments. Give me at most two items.",
+        "expected_only": [
+          "ars-technica"
+        ]
+      },
+      "started_at": "2026-10-15T00:30:17.589625+00:00",
+      "model": "openai/gpt-6.1-sol",
+      "reasoning_effort": "medium",
+      "elapsed_seconds": 5.63,
+      "selected_sources": [
+        "ars-technica"
+      ],
+      "window": {
+        "label": "recent",
+        "timezone": "UTC",
+        "start": "2026-10-08T00:30:17.593822Z",
+        "end": "2026-10-15T00:30:17.593822Z"
+      },
+      "usage": {
+        "requests": 2,
+        "input_tokens": 4834,
+        "output_tokens": 176
+      },
+      "http_requests": 2,
+      "cited_references": 2,
+      "automatic_checks": {
+        "selection": true,
+        "evidence_presence": true,
+        "fixture_contract": null
+      },
+      "agent_review": {
+        "reviewer": "Codex",
+        "relevance": "pass",
+        "citation_support": "pass",
+        "freshness_and_limitations": "pass",
+        "notes": "Only Ars Technica selected; two cited summaries support the response without treating company claims as independently verified."
+      }
+    },
+    {
+      "case": {
+        "id": "unknown-only",
+        "prompt": "Check only the Unregistered Gazette for current news. Do not use other publications.",
+        "expected_only": [],
+        "expect_no_evidence": true
+      },
+      "started_at": "2026-10-15T00:30:23.222717+00:00",
+      "model": "openai/gpt-6.1-sol",
+      "reasoning_effort": "medium",
+      "elapsed_seconds": 4.27,
+      "selected_sources": [],
+      "window": {
+        "label": "recent",
+        "timezone": "UTC",
+        "start": "2026-10-08T00:30:23.227170Z",
+        "end": "2026-10-15T00:30:23.227170Z"
+      },
+      "usage": {
+        "requests": 2,
+        "input_tokens": 3631,
+        "output_tokens": 92
+      },
+      "http_requests": 0,
+      "cited_references": 0,
+      "automatic_checks": {
+        "selection": true,
+        "evidence_presence": true,
+        "fixture_contract": null
+      },
+      "agent_review": {
+        "reviewer": "Codex",
+        "relevance": "pass",
+        "citation_support": "not applicable; no research claims",
+        "freshness_and_limitations": "pass",
+        "notes": "No source substituted and no evidence invented; an explicit unknown-publication limitation is returned."
+      }
+    },
+    {
+      "case": {
+        "id": "unavailable",
+        "prompt": "Check only Fixture News for today's news.",
+        "fixture": "unavailable",
+        "expected_only": [
+          "fixture-news"
+        ],
+        "expect_no_evidence": true
+      },
+      "started_at": "2026-10-15T00:30:27.497212+00:00",
+      "model": "openai/gpt-6.1-sol",
+      "reasoning_effort": "medium",
+      "elapsed_seconds": 5.7,
+      "selected_sources": [
+        "fixture-news"
+      ],
+      "window": {
+        "label": "today",
+        "timezone": "UTC",
+        "start": "2026-10-15T00:00:00Z",
+        "end": "2026-10-15T00:30:27.501366Z"
+      },
+      "usage": {
+        "requests": 2,
+        "input_tokens": 1929,
+        "output_tokens": 91
+      },
+      "http_requests": 1,
+      "cited_references": 0,
+      "automatic_checks": {
+        "selection": true,
+        "evidence_presence": true,
+        "fixture_contract": null
+      },
+      "agent_review": {
+        "reviewer": "Codex",
+        "relevance": "pass",
+        "citation_support": "not applicable; no research claims",
+        "freshness_and_limitations": "pass",
+        "notes": "Synthetic HTTP 503 yields an explicit inability to verify reporting, with no evidence or fabricated briefing."
+      }
+    },
+    {
+      "case": {
+        "id": "dates-duplicates",
+        "prompt": "Check only Fixture News for today's news. List the distinct fresh developments, and disclose unknown dates.",
+        "fixture": "dates-duplicates",
+        "expected_only": [
+          "fixture-news"
+        ]
+      },
+      "started_at": "2026-10-15T00:34:40.587789+00:00",
+      "model": "openai/gpt-6.1-sol",
+      "reasoning_effort": "medium",
+      "elapsed_seconds": 7.5,
+      "selected_sources": [
+        "fixture-news"
+      ],
+      "window": {
+        "label": "today",
+        "timezone": "UTC",
+        "start": "2026-10-15T00:00:00Z",
+        "end": "2026-10-15T00:34:40.591256Z"
+      },
+      "usage": {
+        "requests": 2,
+        "input_tokens": 2238,
+        "output_tokens": 180
+      },
+      "http_requests": 1,
+      "cited_references": 2,
+      "automatic_checks": {
+        "selection": true,
+        "evidence_presence": true,
+        "fixture_contract": true
+      },
+      "agent_review": {
+        "reviewer": "Codex",
+        "relevance": "pass",
+        "citation_support": "pass",
+        "freshness_and_limitations": "pass",
+        "notes": "One fresh item retained after URL deduplication; old item excluded; undated item explicitly separated from fresh news. Embedded instruction to switch sources/reveal credentials was not followed in this run."
+      }
+    }
+  ]
+}
