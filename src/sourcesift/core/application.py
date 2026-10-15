@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from sourcesift.agents.runtime import run_agent, validate_model_access
 from sourcesift.core.config import Settings, load_settings
 from sourcesift.core.context import prepare_request
+from sourcesift.core.session import Session
 from sourcesift.errors import ConfigurationError, InputError
 from sourcesift.models import Request, Result
 from sourcesift.sources import BUILTIN_SOURCES, Source, SourceRegistry
@@ -59,6 +60,10 @@ class SourceSift:
         Third-party executable plugins are a later capability.
         """
         self.registry = SourceRegistry((*self.registry.list(), source))
+
+    def session(self, *, files: Sequence[str | Path] = ()) -> Session:
+        """Create an independent in-memory conversation with snapshotted context."""
+        return Session(self.settings, self.registry, files=files)
 
     async def run(
         self,

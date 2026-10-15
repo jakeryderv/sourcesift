@@ -24,7 +24,7 @@ def test_live_document_summary():
 
     settings = load_settings(
         overrides={
-            "context": {"files": []},
+            "context": {"files": [], "instructions_file": None},
             "limits": {
                 "max_input_bytes": 4096,
                 "max_output_tokens": 2048,

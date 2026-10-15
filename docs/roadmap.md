@@ -2,10 +2,11 @@
 
 **Goal:** Incrementally build a Python-first research agent that understands requests
 such as “check news” and “check tech,” selects relevant registered sources, and
-returns grounded responses through a reusable SDK and composable CLI.
+returns grounded responses through interactive terminal chat, a reusable SDK, and
+a composable one-off CLI.
 
-**Status:** Phases 0–2 are implemented: package/release tooling, supplied-context
-requests, and bounded research with registered sources and evidence references.
+**Status:** Phases 0–3 are implemented: package/release tooling, supplied-context
+requests, grounded research, and ephemeral interactive sessions with a Textual TUI.
 Examples in later phases remain planned behavior.
 
 **Related documents:** [Use cases and product scope](use-cases.md),
@@ -26,7 +27,7 @@ The Markdown files directly under `docs/` are the maintained project reference;
 - **Evidence early:** Evaluate source selection, grounding, and failure behavior
   alongside retrieval, before adding richer interfaces.
 - **Incremental complexity:** Keep PydanticAI + OpenRouter fixed; introduce
-  persistence, TUI work, and Rust only when the relevant phase justifies them.
+  persistence and Rust only when the relevant phase justifies them.
 
 ## Phase 0 — Package and Release Foundation
 
@@ -145,7 +146,63 @@ Run live source/model evaluations separately, recording the model, request/conte
 source set, time window, relevance judgments, citation support, latency, and usage.
 Choose measurable quality targets from that baseline before expanding the catalog.
 
-## Phase 3 — Third-Party Plugins and Public SDK
+## Phase 3 — Interactive Research Sessions and Terminal UI
+
+**Goal:** Make ongoing research conversations the main interactive experience,
+while preserving `ssift ask` for quick requests and automation.
+
+### Implementation
+
+- [x] Add a frontend-independent Python session API with conversation and evidence history.
+- [x] Keep stable citation IDs and provenance when following up or reading an article.
+- [x] Add transactional turns: errors and cancellation preserve completed history.
+- [x] Bound session history by turn count and serialized bytes; request a new session at the limit.
+- [x] Stream provisional drafts and tool progress, then display only validated final answers.
+- [x] Add `ssift chat` using Textual, Rich, and asyncio with one active turn per session.
+- [x] Support multiline input, cancel/new-session shortcuts, citations, and loaded-context inspection.
+- [x] Load explicit personal Markdown guidance alongside ordinary background documents.
+- [x] Snapshot context at session start and reload it when starting fresh.
+- [x] Keep storage optional: sessions remain in memory, without automatic persistence.
+
+### Completion Criteria
+
+A user can ask “check tech,” follow with “read the second article,” and discuss
+that evidence with stable citations and disclosed retrieval dates. They can cancel
+an active turn without losing completed history, inspect context, and start fresh.
+The SDK exposes the same session behavior. One-off CLI output remains pipe-friendly.
+
+See [interactive chat](chat.md) for commands, limits, and session semantics.
+
+## Phase 4 — Discovery Workflows and Recommendations
+
+**Goal:** Expand the initial research flow into reusable briefings and structured
+article recommendations, guided by real interactive usage.
+
+### Implementation
+
+- [ ] Define structured relevance, categorization, and ranking results.
+- [ ] Produce personalized recommendations with explanations based on explicit context.
+- [ ] Support reusable workflows for repeated briefing/research tasks.
+- [ ] Add workflow and ranking extension points where required by actual implementations.
+- [ ] Evaluate recommendation quality and duplicate-story handling on labeled examples.
+
+### Example Usage
+
+```bash
+ssift ask "Check tech and AI; recommend the five articles most relevant to my work"
+ssift ask "Give me a weekly business and marketing briefing" > briefing.md
+```
+
+### Completion Criteria
+
+A request can produce a useful ranked briefing across relevant registered sources,
+explain why items matter, and retain evidence and limitations. Evaluation compares
+recommendations against labeled relevance judgments. Saved history and automatic
+preference learning remain unnecessary.
+
+**Use cases:** Deepens UC-01, UC-02, UC-04, UC-05, and UC-08.
+
+## Phase 5 — Third-Party Plugins and Public SDK
 
 **Goal:** Extend the working built-in interfaces without modifying the core.
 
@@ -184,53 +241,6 @@ conflicting plugin produces actionable diagnostics.
 **Use cases:** UC-07, extending the existing research use cases. Workflow, ranker,
 and command extensions are added when concrete uses require them.
 
-## Phase 4 — Discovery Workflows and Recommendations
-
-**Goal:** Expand the initial research flow into reusable briefings and structured
-article recommendations before investing in a TUI.
-
-### Implementation
-
-- [ ] Define structured relevance, categorization, and ranking results.
-- [ ] Produce personalized recommendations with explanations based on explicit context.
-- [ ] Support reusable workflows for repeated briefing/research tasks.
-- [ ] Add workflow and ranking extension points where required by actual implementations.
-- [ ] Evaluate recommendation quality and duplicate-story handling on labeled examples.
-
-### Example Usage
-
-```bash
-ssift ask "Check tech and AI; recommend the five articles most relevant to my work"
-ssift ask "Give me a weekly business and marketing briefing" > briefing.md
-```
-
-### Completion Criteria
-
-A request can produce a useful ranked briefing across relevant registered sources,
-explain why items matter, and retain evidence and limitations. Evaluation compares
-recommendations against labeled relevance judgments. Saved history and automatic
-preference learning remain unnecessary.
-
-**Use cases:** Deepens UC-01, UC-02, UC-04, UC-05, and UC-08.
-
-## Phase 5 — Interactive Sessions
-
-**Goal:** Support follow-up questions using context retained within a running session.
-
-### Implementation
-
-- [ ] Keep session/message history in the Python runtime.
-- [ ] Add context-window management, cancellation, and streaming responses.
-- [ ] Add `ssift chat` and expose session operations through the SDK.
-- [ ] Retain source references and retrieval limitations across follow-up questions.
-- [ ] Keep session operations independent of any frontend and persistent storage.
-
-### Completion Criteria
-
-A user can ask follow-up questions about retrieved material in one session. Session
-history is ephemeral unless a future explicit persistence feature is enabled.
-A TUI is not required to complete this phase.
-
 ## Phase 6 — Optional Persistence and Archive Search
 
 **Goal:** Add durable state when saved research and cross-run history justify it.
@@ -257,9 +267,6 @@ These are independent follow-ups, not mandatory gates before shipping useful rel
 
 - **Geographic coverage:** Expand the curated collection to local and global news,
   validate source coverage, and deliver UC-03. This does not require persistence.
-- **TUI:** Choose Textual or Ratatui after the Python session interface is proven.
-  A Ratatui frontend needs a defined subprocess/IPC protocol; either choice reuses
-  the Python runtime.
 - **Rust optimization:** Profile first. Add PyO3/Maturin components only for measured
   benefits, preserve Python contracts, and validate platform-specific wheels.
 - **Ecosystem maturity:** Stabilize SDK/plugin compatibility, expand examples and
@@ -289,15 +296,15 @@ For each implemented capability:
 | Complete | Published scaffold and CI/release foundation | 0 |
 | Complete | SDK, context, and composable CLI | 1 |
 | Complete | Semantic source selection and grounded research | 2 |
-| P1 | Third-party plugins | 3 |
+| Complete | Interactive sessions and Textual chat | 3 |
 | P1 | Reusable briefings and recommendations | 4 |
-| Later | Interactive conversations | 5 |
+| Later | Third-party plugins and SDK extension contracts | 5 |
 | Optional | Persistence and archive search | 6 |
-| As justified | Wider geography, TUI, native optimization, ecosystem maturity | Later extensions |
+| As justified | Wider geography, native optimization, ecosystem maturity | Later extensions |
 
 **Core progression:**
 
-`SDK + CLI → Registered Sources + Grounded Research → Plugins → Richer Briefings → Interactive Sessions`
+`SDK + CLI → Registered Sources + Grounded Research → Interactive Sessions + TUI → Richer Briefings → Plugins`
 
 Persistence, broader coverage, and native/frontend extensions build on that core
 when their own use cases justify them.

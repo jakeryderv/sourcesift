@@ -17,7 +17,14 @@ class ContextDocument(Contract):
 
     name: str = Field(min_length=1, max_length=512)
     text: str = Field(repr=False)
-    role: Literal["background", "document"] = "document"
+    role: Literal["background", "document", "guidance"] = "document"
+
+
+class SessionEvent(Contract):
+    """UI-independent progress; streamed drafts are provisional until run returns."""
+
+    kind: Literal["status", "draft", "reset"]
+    text: str = Field(default="", repr=False)
 
 
 class Request(Contract):
@@ -62,7 +69,7 @@ class Reference(Contract):
 
 
 class Evidence(Reference):
-    """Per-run text supplied to the model, never persisted by SourceSift."""
+    """Retrieved text retained in memory for a run or session, never persisted."""
 
     text: str = Field(repr=False)
 

@@ -9,6 +9,7 @@ from sourcesift.core.config import (
     SourcesSettings,
     load_settings,
 )
+from sourcesift.core.session import Session
 from sourcesift.errors import (
     ConfigurationError,
     InputError,
@@ -21,6 +22,7 @@ from sourcesift.models import (
     Request,
     ResearchWindow,
     Result,
+    SessionEvent,
     Usage,
 )
 from sourcesift.sources import Source, SourceRegistry
@@ -37,6 +39,8 @@ __all__ = [
     "Request",
     "ResearchWindow",
     "Result",
+    "Session",
+    "SessionEvent",
     "Settings",
     "Source",
     "SourceRegistry",

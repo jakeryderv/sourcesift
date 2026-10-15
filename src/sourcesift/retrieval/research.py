@@ -48,6 +48,8 @@ class Research:
         prompt: str,
         *,
         now: datetime | None = None,
+        previous: dict[str, Evidence] | None = None,
+        next_id: int = 1,
     ) -> None:
         self.settings = settings
         self.registry = registry
@@ -57,6 +59,7 @@ class Research:
         self.selected: list[str] = []
         self._notes: list[str] = []
         self.evidence: dict[str, Evidence] = {}
+        self.previous = dict(previous or {})
         self.allowed: set[str] = set()
         self.direct: set[str] = set()
         for value in re.findall(r"https?://[^\s<>\"']+", prompt):
@@ -65,12 +68,23 @@ class Research:
             except RetrievalError:
                 pass
         self.allowed.update(self.direct)
+        self.allowed.update(self.previous)
         self.only: tuple[str, ...] | None = None
         self.attempted = False
         self.articles = 0
         self._read: set[str] = set()
-        self._next_id = 1
+        self._next_id = next_id
         self._fingerprints: dict[str, bytes] = {}
+
+    @property
+    def all_evidence(self) -> dict[str, Evidence]:
+        """Current evidence supersedes earlier snapshots with the same identity."""
+        return self.previous | self.evidence
+
+    @property
+    def next_id(self) -> int:
+        """Next unused citation number, including IDs removed by date validation."""
+        return self._next_id
 
     def note(self, text: str) -> None:
         if text not in self._notes:
@@ -178,9 +192,12 @@ class Research:
         self.attempted = True
         try:
             if self.window is None:
-                raise RetrievalError(
-                    "Call research first to establish a window and source constraints."
-                )
+                if normalize_url(url) not in self.previous:
+                    raise RetrievalError(
+                        "Call research first to establish a window and source constraints."
+                    )
+                self.window = make_window("any", self.settings, self.now)
+                self.only = ()
             normalized = normalize_url(url)
             if normalized not in self.allowed or (
                 self.only and normalized not in self.evidence
@@ -237,7 +254,7 @@ class Research:
             return
         if self.articles >= self.settings.limits.max_articles:
             raise RetrievalError("Article limit reached.")
-        previous = self.evidence.get(url)
+        previous = self.all_evidence.get(url)
         source = (
             self.registry.resolve(previous.source_id)
             if previous and previous.source_id
@@ -249,7 +266,7 @@ class Research:
         self._read.add(url)
         page = await self.fetcher.get(url)
         item = parse_article(page, self.settings.limits.max_item_chars)
-        previous = self.evidence.get(url)
+        previous = self.all_evidence.get(url)
         if previous:
             # Explicit article dates take precedence; feed dates fill missing fields.
             item = ParsedItem(
@@ -290,12 +307,13 @@ class Research:
             )
             if replacing:
                 self.evidence.pop(replacing, None)
+                self.previous.pop(replacing, None)
                 self._fingerprints.pop(replacing, None)
             return False
-        existing = self.evidence.get(item.url) or self.evidence.get(
+        existing = self.all_evidence.get(item.url) or self.all_evidence.get(
             replacing or item.url
         )
-        if existing and kind == "feed_summary":
+        if item.url in self.evidence and kind == "feed_summary":
             return False
         digest = hashlib.sha256(
             " ".join((item.title + " " + item.text).casefold().split()).encode()
@@ -308,9 +326,10 @@ class Research:
             return False
         if replacing and replacing != item.url:
             self.evidence.pop(replacing, None)
+            self.previous.pop(replacing, None)
             self._fingerprints.pop(replacing, None)
         limits = self.settings.limits
-        if existing is None and len(self.evidence) >= limits.max_items:
+        if item.url not in self.evidence and len(self.evidence) >= limits.max_items:
             self.note("Evidence item limit reached; coverage is partial.")
             return False
         remaining = limits.max_evidence_chars - sum(
@@ -362,7 +381,7 @@ class Research:
 
     def references(self, answer: str) -> tuple[Reference, ...]:
         """Return cited references in first-citation order, never fabricated URLs."""
-        by_id = {item.id: item for item in self.evidence.values()}
+        by_id = {item.id: item for item in self.all_evidence.values()}
         ids = dict.fromkeys("S" + value for value in CITATION.findall(answer))
         return tuple(
             Reference.model_validate(by_id[key].model_dump(exclude={"text"}))

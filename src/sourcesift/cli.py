@@ -116,3 +116,37 @@ def main() -> None:
         with open(os.devnull, "w") as sink:
             os.dup2(sink.fileno(), sys.stdout.fileno())
         raise SystemExit(141) from None
+
+
+@app.command
+def chat(
+    *,
+    file: Annotated[list[Path] | None, Parameter(name=("--file", "-f"))] = None,
+    config: Path | None = None,
+    model: str | None = None,
+    reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+    | None = None,
+) -> None:
+    """Open an in-memory research conversation in the terminal.
+
+    Parameters:
+        file: Context file loaded at session start; repeat for multiple files.
+        config: TOML file; overrides SOURCESIFT_CONFIG and the user default.
+        model: OpenRouter provider/model ID.
+        reasoning_effort: Optional reasoning effort supported by the selected model.
+    """
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        raise InputError(
+            "ssift chat requires an interactive terminal; use ssift ask for pipes."
+        )
+    from sourcesift.agents.runtime import validate_model_access
+    from sourcesift.tui import ChatApp
+
+    overrides = {}
+    if model is not None:
+        overrides["model"] = model
+    if reasoning_effort is not None:
+        overrides["reasoning_effort"] = reasoning_effort
+    settings = load_settings(config, overrides={"agent": overrides})
+    validate_model_access(settings)
+    ChatApp(SourceSift(settings).session(files=file or ())).run()

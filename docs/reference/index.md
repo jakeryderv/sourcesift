@@ -8,6 +8,8 @@ remains planned.
     options:
       members:
         - SourceSift
+        - Session
+        - SessionEvent
         - Request
         - ContextDocument
         - Reference

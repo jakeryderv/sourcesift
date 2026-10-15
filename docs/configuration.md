@@ -21,7 +21,8 @@ model = "openai/gpt-6.1-sol"
 reasoning_effort = "medium"
 
 [context]
-files = ["context.md"]
+instructions_file = "context.md" # optional personal priorities and response preferences
+files = ["project.md"]          # optional background documents
 
 [limits]
 max_input_bytes = 131072
@@ -43,8 +44,11 @@ are logged by SourceSift.
 
 ## Context inputs
 
-Configured files are optional background information. The prompt determines the
-current task. Context order is configured background files, SDK-supplied documents,
+Configured `files` are optional background information. `instructions_file` is an
+explicitly selected personal guidance file: interests, priorities, and response
+preferences, subordinate to the current task and grounding rules. It is not
+automatically discovered from `AGENTS.md` or a project directory. The prompt determines the
+current task. Context order is personal guidance, configured background files, SDK-supplied documents,
 explicit file inputs, and piped stdin. Configured paths are relative to the TOML
 file; explicit paths are relative to the working directory. `~` expands to the
 user's home directory. Files must be regular UTF-8 text or Markdown files; PDF,
@@ -52,7 +56,7 @@ images, and other binary formats are not supported.
 
 The input budget counts UTF-8 bytes in the prompt, document labels, and document
 text together. Files and stdin are read with bounded sizes. Over-limit inputs are
-rejected rather than truncated. The context count includes background files, SDK
+rejected rather than truncated. The context count includes guidance, background files, SDK
 documents, explicit files, and a supplied stdin stream. Empty stdin adds no document.
 The configuration must be a regular file and has a 64 KiB limit.
 
@@ -114,3 +118,22 @@ model error; HTTP/source/evidence limits produce partial-coverage notes.
 For longer research, a 180-second total timeout and 4096 output tokens can help;
 these are the live evaluation settings. Raising limits increases possible latency
 and provider cost. The SDK validates upper bounds on every numeric budget.
+
+## Session limits and context reload
+
+`ssift chat` and `app.session()` snapshot configured context and initial files at
+creation. They keep that text stable until reset. `/new` (Ctrl+N) clears completed
+history and reloads those files; an unreadable file preserves the previous session.
+Change model/source configuration by restarting chat or creating a new application.
+One-off `ask` continues to load files for each request.
+
+| Setting under `[limits]` | Default | Meaning |
+|---|---:|---|
+| `max_session_turns` | 20 | Maximum completed turns before starting fresh |
+| `max_session_bytes` | 524288 | Serialized history/evidence budget, also checked with the next request payload |
+
+All research budgets above apply per turn, including newly collected evidence.
+History and retained evidence are separately bounded by `max_session_bytes`.
+Bytes are a conservative application guard, not a tokenizer or a guarantee that
+every provider context window fits. Over-limit turns fail without changing completed
+history. Sessions are never silently truncated or summarized.

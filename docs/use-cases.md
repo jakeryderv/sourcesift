@@ -1,9 +1,9 @@
 # SourceSift — Use Cases & Product Philosophy
 
-**Status:** Maintained product reference. Phases 1 and 2 implement supplied
-context and bounded research from registered sources. These use cases also describe
-later product goals; plugin discovery, ranking workflows, local/global expansion,
-and interactive sessions remain later work. See the [research guide](research.md)
+**Status:** Maintained product reference. Phases 1–3 implement supplied
+context, bounded research from registered sources, and interactive terminal chat. These use cases also describe
+later product goals; plugin discovery, ranking workflows, and local/global expansion
+remain later work. See the [research guide](research.md)
 for current coverage and limitations.
 
 **Related documents:** [Design and proposed interfaces](design.md),
@@ -24,7 +24,8 @@ SourceSift combines:
 - Agent-powered research, analysis, and synthesis.
 - User-defined context, interests, and preferences.
 - An extensible Python SDK and plugin ecosystem.
-- A composable command-line interface.
+- An interactive research conversation with a simple terminal interface.
+- A composable command-line interface for quick one-off tasks.
 
 **Core philosophy:** Bring relevant information to the user from appropriate sources, rather than requiring the user to find and search each source individually.
 
@@ -81,7 +82,7 @@ SourceSift should provide useful results without requiring persistent storage or
 Each request can retrieve current information, evaluate it, and return a response.
 
 Configuration and context files are compatible with this approach, as is state
-held in memory during a request. Caching, search indexes, historical tracking, and
+held in memory during a request or conversation. Caching, search indexes, historical tracking, and
 persistent sessions are optional future enhancements.
 
 ### Composable and Programmable
@@ -437,6 +438,21 @@ Expected behavior:
 - Avoid requiring an interactive session.
 - Apply the same research and evidence expectations as direct terminal use.
 
+### UC-09 — Interactive Research Follow-ups
+
+Start `ssift chat`, with optional personal Markdown guidance, then ask:
+
+1. “Check tech and AI.”
+2. “Which of those matters for my project?”
+3. “Read the second article.”
+4. “Compare those reports and give me a brief.”
+
+The conversation retains evidence, article identities, citations, and limitations.
+Retained evidence has retrieval timestamps and is not presented as freshly checked.
+The user can cancel a turn, inspect loaded context, or start a new session. A new
+session reloads configured context; exiting discards the conversation. See the
+[chat guide](chat.md). Saved conversations and resume remain future work.
+
 ## 7. Agent Responsibilities
 
 The agent should focus on operations requiring contextual judgment.
@@ -490,7 +506,7 @@ These features should be added when specific use cases justify them.
 - Semantic selection using source links, metadata, descriptions, and the user's request.
 - Python SDK and shared built-in plugin contracts, followed by third-party plugin support.
 - PydanticAI + OpenRouter.
-- Cyclopts CLI.
+- Cyclopts CLI and Textual/Rich/asyncio chat.
 - User-defined context through configuration and Markdown.
 - Stateless research and source-grounded responses.
 - stdin/stdout and file-based workflows.
@@ -505,7 +521,6 @@ These features should be added when specific use cases justify them.
 - Cloud services and background scheduling.
 - Advanced plugin permissions and sandboxing.
 - Native Rust optimization.
-- TUI implementation; Textual versus Ratatui remains undecided.
 - Web application and HTTP server.
 
 ## 10. Success Criteria
