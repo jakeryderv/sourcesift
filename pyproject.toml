@@ -1,7 +1,7 @@
 [project]
 name = "sourcesift"
 version = "0.1.0"
-description = "A Python SDK and CLI for context-aware requests, with source-aware research in development."
+description = "A Python SDK and CLI for prompt-driven research with registered sources and evidence-backed answers."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Jake Van Slyke", email = "jakervanslyke@gmail.com" }]
@@ -19,12 +19,16 @@ classifiers = [
 ]
 dependencies = [
     "cyclopts>=5.2.0,<6",
+    "feedparser>=6,<7",
+    "httpx>=0.28,<1",
     "openai>=3.31,<4",
     "platformdirs>=4.13.0,<5",
     "pydantic>=2.14.1,<3",
     "pydantic-ai-slim[openrouter]>=2.56.0,<3",
     "pydantic-settings>=2.16.0,<3",
     "rich>=15.0,<16",
+    "trafilatura>=2,<3",
+    "tzdata>=2026.1",
 ]
 
 [project.scripts]

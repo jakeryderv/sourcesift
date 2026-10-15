@@ -5,6 +5,7 @@ import stat
 import tomllib
 from pathlib import Path
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from platformdirs import user_config_path
 from pydantic import Field, SecretStr, ValidationError, field_validator
@@ -12,6 +13,7 @@ from pydantic_settings import BaseSettings, EnvSettingsSource, SettingsConfigDic
 
 from sourcesift.errors import ConfigurationError
 from sourcesift.models import Contract
+from sourcesift.sources import Source
 
 
 class AgentSettings(Contract):
@@ -39,6 +41,24 @@ class ContextSettings(Contract):
     files: tuple[Path, ...] = ()
 
 
+class SourcesSettings(Contract):
+    """Enabled catalog additions and freshness settings; selection stays semantic."""
+
+    disabled: tuple[str, ...] = ()
+    custom: tuple[Source, ...] = Field(default=(), max_length=32)
+    timezone: str = "UTC"
+    recent_days: int = Field(default=7, ge=1, le=90)
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("timezone must be an IANA zone name") from None
+        return value
+
+
 class Limits(Contract):
     """Per-request limits. Byte limits count UTF-8 text, not model tokens."""
 
@@ -46,6 +66,17 @@ class Limits(Contract):
     max_context_files: int = Field(default=16, ge=0, le=256)
     timeout_seconds: float = Field(default=60, gt=0, le=600, allow_inf_nan=False)
     max_output_tokens: int = Field(default=2048, ge=1, le=32768)
+    max_model_requests: int = Field(default=6, ge=1, le=20)
+    max_tool_calls: int = Field(default=8, ge=0, le=30)
+    max_sources: int = Field(default=3, ge=1, le=16)
+    max_items: int = Field(default=18, ge=1, le=100)
+    max_items_per_source: int = Field(default=6, ge=1, le=25)
+    max_articles: int = Field(default=6, ge=0, le=30)
+    max_http_requests: int = Field(default=24, ge=1, le=100)
+    http_timeout_seconds: float = Field(default=10, gt=0, le=60, allow_inf_nan=False)
+    max_response_bytes: int = Field(default=2097152, ge=1024, le=10485760)
+    max_item_chars: int = Field(default=10000, ge=100, le=50000)
+    max_evidence_chars: int = Field(default=60000, ge=100, le=300000)
 
 
 class Settings(Contract):
@@ -54,6 +85,7 @@ class Settings(Contract):
     agent: AgentSettings = Field(default_factory=AgentSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
     limits: Limits = Field(default_factory=Limits)
+    sources: SourcesSettings = Field(default_factory=SourcesSettings)
 
 
 class _Environment(BaseSettings):

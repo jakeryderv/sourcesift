@@ -1,8 +1,10 @@
 # SourceSift — Use Cases & Product Philosophy
 
-**Status:** Maintained product reference. The published `0.0.1` package is a scaffold;
-these use cases describe intended behavior. Initial coverage and later expansions
-are distinguished below.
+**Status:** Maintained product reference. Phases 1 and 2 implement supplied
+context and bounded research from registered sources. These use cases also describe
+later product goals; plugin discovery, ranking workflows, local/global expansion,
+and interactive sessions remain later work. See the [research guide](research.md)
+for current coverage and limitations.
 
 **Related documents:** [Design and proposed interfaces](design.md),
 [implementation roadmap](roadmap.md), and [current package setup](https://github.com/jakeryderv/sourcesift#readme).

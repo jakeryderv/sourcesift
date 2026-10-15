@@ -2,10 +2,11 @@
 
 **Python-first, plugin-driven research with prompt-driven source selection.**
 
-**Status:** Maintained design. Phase 1 implements the SDK, CLI, configuration, and
-supplied-context flow. Source retrieval, evidence references, and plugin interfaces
-below remain planned. Implemented contracts are documented in the [SDK](sdk.md),
-[CLI](cli.md), and [configuration](configuration.md) references.
+**Status:** Phases 1 and 2 implement the SDK, CLI, supplied context, registered
+sources, bounded retrieval, and evidence references. Executable plugins and later
+roadmap capabilities remain planned. Current contracts are documented in the
+[SDK](sdk.md), [CLI](cli.md), [research](research.md), and
+[configuration](configuration.md) references.
 
 **Related documents:** [Use cases and scope](use-cases.md),
 [implementation roadmap](roadmap.md), and [setup and releases](https://github.com/jakeryderv/sourcesift#readme).
@@ -185,7 +186,7 @@ dependency management, and hot reloading are deferred.
 
 ## 5. Configuration and User Context
 
-Configuration is optional beyond the credentials needed for model access. Proposed
+Configuration is optional beyond model selection and credentials. Implemented
 mechanisms are TOML for application settings, Markdown for personal context,
 environment variables for credentials and deployment-specific settings, and Python
 objects for SDK callers. Ordinary use should not require executable Python config.
@@ -236,16 +237,15 @@ print(result.answer)
 # result = await app.run("Summarize this document", files=["report.md"])
 ```
 
-The Phase 1 result contains answer text, limitations, the configured model, and
-usage information. Retrieved evidence references and retrieval failure details
-will be defined in Phase 2. The CLI renders the same result used by SDK callers.
+The result contains answer text, limitations, model usage, cited evidence
+references, selected source IDs, the research window, and HTTP request count.
+The CLI renders the same result used by SDK callers.
 The API is early and may evolve before 1.0.
 
-Plugin registration remains available through application methods such as
-`register_source()` and `register_tool()`, with exact types defined during
-implementation.
+`register_source(Source(...))` adds a data definition today. Executable tool
+registration and entry-point discovery remain Phase 3 work.
 
-### Planned CLI
+### Research CLI
 
 ```bash
 ssift ask "Check news"
@@ -268,9 +268,9 @@ The installed entry point is `ssift = "sourcesift.cli:main"`.
 
 - Tie factual research claims to retrieved evidence and provide usable references.
   Distinguish source reporting, the agent's interpretation, and uncertainty.
-- Resolve “today” and “this week” using a known current time and configured/local
-  time zone, and disclose the window used. Define a default window for “recent”
-  during implementation and include it in the response when relevant.
+- Resolve “today” and “this week” using a known current time and configured
+  time zone (UTC by default), and disclose the window. “Recent” defaults to seven
+  rolling days; calendar windows and unknown dates follow the [research contract](research.md).
 - If evidence is missing, conflicting, stale, or inaccessible, say so. Never treat
   retrieval time as proof that an undated article is recent.
 - Continue through individual source failures when useful evidence remains, and
@@ -278,8 +278,7 @@ The installed entry point is `ssift = "sourcesift.cli:main"`.
   coverage limitation rather than a claim of comprehensive research.
 - Bound model requests/tool calls, sources/articles fetched, input size, HTTP
   response size, retries, concurrency, and total execution time. Numeric defaults
-  are documented for Phase 1 in the [configuration reference](configuration.md);
-  retrieval-specific defaults will be established in Phase 2.
+  are documented in the [configuration reference](configuration.md).
 - Treat retrieved documents as evidence, not as instructions that can alter the
   task, enable plugins, change configuration, or disclose credentials.
 
@@ -292,7 +291,7 @@ The installed entry point is `ssift = "sourcesift.cli:main"`.
 | Orchestration | Python `async`/`await` |
 | CLI / configuration | Cyclopts / pydantic-settings |
 | HTTP / RSS and Atom | HTTPX / feedparser |
-| Article extraction / feed discovery | Trafilatura |
+| Article extraction / feed discovery | Trafilatura / bounded HTML link parsing |
 | Plugin discovery | `importlib.metadata` |
 | Testing | pytest, with fixtures and separate live evaluations |
 | Future persistence / archive search | SQLite / FTS5 |

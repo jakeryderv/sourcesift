@@ -1,5 +1,6 @@
 """Framework-independent request and result contracts."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -42,6 +43,39 @@ class Usage(Contract):
     output_tokens: int = 0
 
 
+class Reference(Contract):
+    """Retrieved evidence behind one citation; URLs and dates come from adapters."""
+
+    id: str
+    title: str
+    url: str
+    requested_url: str
+    retrieved_from: str
+    publisher: str
+    source_id: str | None = None
+    author: str | None = None
+    published_at: datetime | None = None
+    updated_at: datetime | None = None
+    retrieved_at: datetime
+    kind: Literal["feed_summary", "article"]
+    limitations: tuple[str, ...] = ()
+
+
+class Evidence(Reference):
+    """Per-run text supplied to the model, never persisted by SourceSift."""
+
+    text: str = Field(repr=False)
+
+
+class ResearchWindow(Contract):
+    """Inclusive window start and retrieval-time end, with the configured zone."""
+
+    label: Literal["recent", "today", "this_week", "any"]
+    timezone: str
+    start: datetime | None
+    end: datetime
+
+
 class Result(Contract):
     """Answer, explicit capability limitations, and reported usage."""
 
@@ -49,3 +83,7 @@ class Result(Contract):
     limitations: tuple[str, ...] = ()
     usage: Usage = Field(default_factory=Usage)
     model: str
+    references: tuple[Reference, ...] = ()
+    selected_sources: tuple[str, ...] = ()
+    window: ResearchWindow | None = None
+    http_requests: int = 0

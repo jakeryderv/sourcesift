@@ -12,6 +12,7 @@ nav:
   - Roadmap: roadmap.md
   - Command line: cli.md
   - Python SDK: sdk.md
+  - Research and sources: research.md
   - Configuration: configuration.md
   - API reference: reference/index.md
 

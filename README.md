@@ -1,15 +1,14 @@
 # SourceSift
 
-SourceSift provides a Python SDK and CLI for requests with explicit document and
-personal context. Source-aware research and personalized discovery are in development. Requests such as “check news” or “check tech” will guide source
-selection using registered links, metadata, descriptions, and optional user context.
-The first curated collection will cover US national news, technology, AI, business,
-marketing, and finance.
+SourceSift is a Python SDK and CLI for prompt-driven research. Requests such as
+“check news” or “check tech” select registered sources using descriptions, coverage
+metadata, and optional user context, then return answers with evidence references.
 
-**Phase 1 is implemented:** single requests through PydanticAI and OpenRouter,
-optional text/Markdown context, TOML configuration, and shell-friendly output.
-Source selection, URL retrieval, and verified current-news research arrive in
-Phase 2. The SDK is an early API and may evolve before 1.0.
+**Phases 1 and 2 are implemented:** supplied-text analysis, semantic source
+selection, RSS/Atom retrieval, feed discovery, and bounded article extraction.
+The initial eight-source collection covers US national news, technology, AI,
+business, marketing, and finance. Sources and dates are explicit; missing evidence
+and access failures are disclosed. The SDK is an early API and may evolve before 1.0.
 
 ## Project Documentation
 
@@ -23,6 +22,7 @@ The Markdown documents directly under `docs/` are the maintained project referen
 - [Roadmap](docs/roadmap.md): implementation order, progress, and completion criteria.
 - [CLI guide](docs/cli.md), [Python SDK](docs/sdk.md), and
   [configuration](docs/configuration.md): current usage and defaults.
+- [Research and sources](docs/research.md): retrieval, evidence, and evaluation contracts.
 - [API reference](docs/reference/index.md): source-based reference rendered by MkDocs.
 
 Documents in `docs/capstone/` are archived course material for reference. The
@@ -41,6 +41,8 @@ Set `OPENROUTER_API_KEY` securely in your environment, then select a model:
 ```sh
 export SOURCESIFT_MODEL=openai/gpt-6.1-sol
 export SOURCESIFT_REASONING_EFFORT=medium
+ssift ask "Check news"
+ssift ask "Check tech and AI"
 ssift ask "Summarize this document" --file report.md
 cat report.md | ssift ask "Summarize this" > summary.md
 ```
@@ -54,8 +56,8 @@ print(result.answer)
 # Inside an async application: result = await app.run(...)
 ```
 
-Context is sent to the selected model through OpenRouter. No model is selected
-implicitly and no external sources are retrieved in Phase 1. See the
+Context and retrieved evidence are sent to the selected model through OpenRouter.
+No model is selected implicitly. Research requires a tool-capable model. See the
 [configuration guide](docs/configuration.md) for background context, limits, and
 settings precedence.
 
@@ -100,6 +102,13 @@ Mark tests requiring external services or API credentials with
 `OPENROUTER_API_KEY`, `SOURCESIFT_MODEL`, and optionally `SOURCESIFT_REASONING_EFFORT`.
 This opt-in check sends a small synthetic document to the model and incurs normal
 provider charges. Tests never load `.env` automatically.
+
+For the separate eight-case research evaluation, run
+`uv run --locked python scripts/research_eval.py` with the same environment.
+It makes live model calls and public feed requests; two cases substitute synthetic
+source fixtures. `--case named-only` runs one case. Ignored `evaluation-results/`
+records include evidence for manual relevance/citation review. See the
+[research guide](docs/research.md) for scope and evaluation details.
 
 Run distribution validation locally with:
 
@@ -179,7 +188,7 @@ finish, approve workflows on the release PR, and require its `CI` check to pass.
 Ordinary feature PRs leave those version numbers unchanged.
 
 - `fix:` and other releasable fixes produce patch releases.
-- `feat:` produces a minor release; the first usable SDK/CLI is targeted at `0.1.0`.
+- `feat:` produces a minor release.
 - Breaking changes use `!` or a `BREAKING CHANGE:` footer. Before `1.0`, these bump
   the minor version; at and after `1.0`, they bump the major version.
 - Documentation changes can contribute to a patch release. Maintenance-only changes

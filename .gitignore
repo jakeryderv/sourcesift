@@ -27,3 +27,6 @@ site/
 .DS_Store
 *.swp
 *.swo
+
+# Opt-in research evaluation records (may contain supplied context)
+evaluation-results/

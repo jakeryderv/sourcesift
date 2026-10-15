@@ -1,7 +1,8 @@
 # API reference
 
-The Phase 1 SDK supports single requests with supplied context. Source retrieval
-and plugin registration in the [design](../design.md) remain planned.
+The SDK supports independent requests with supplied context, source definitions,
+and bounded research. Executable plugin discovery in the [design](../design.md)
+remains planned.
 
 ::: sourcesift
     options:
@@ -9,6 +10,11 @@ and plugin registration in the [design](../design.md) remain planned.
         - SourceSift
         - Request
         - ContextDocument
+        - Reference
+        - ResearchWindow
+        - Source
+        - SourceRegistry
+        - SourcesSettings
         - Result
         - Usage
         - Settings

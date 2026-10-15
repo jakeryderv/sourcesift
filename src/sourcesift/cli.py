@@ -24,7 +24,7 @@ from sourcesift.models import Result
 
 app = App(
     name="ssift",
-    help="Analyze supplied text with SourceSift. External retrieval is not available yet.",
+    help="Research registered sources and analyze supplied text with SourceSift.",
     version=lambda: version("sourcesift"),
     exit_on_error=False,
     print_error=False,
@@ -42,6 +42,16 @@ def render_result(result: Result, output_format: Literal["markdown", "plain"]) -
         )
         console.print(Markdown(text, hyperlinks=False))
         text = buffer.getvalue().strip()
+    if result.references:
+        text += "\n\nReferences:\n" + "\n".join(
+            f"[{ref.id}] {ref.title} — {ref.publisher} ({ref.kind.replace('_', ' ')})\n"
+            f"{ref.url}\n"
+            f"Published: {ref.published_at.isoformat() if ref.published_at else 'unknown'}; "
+            f"updated: {ref.updated_at.isoformat() if ref.updated_at else 'unknown'}; "
+            f"retrieved: {ref.retrieved_at.isoformat()}\n"
+            f"Retrieved from: {ref.retrieved_from}"
+            for ref in result.references
+        )
     if result.limitations:
         text += "\n\n" + "\n".join(f"Note: {item}" for item in result.limitations)
     return text.rstrip() + "\n"

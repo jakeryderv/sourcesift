@@ -76,7 +76,10 @@ def test_sync_async_context_and_usage(settings, install_model, tmp_path):
         assert payload["context"][0]["text"] == "Document contents"
         assert "private-key" not in str(messages)
         assert "no retrieval" in info.instructions
-        assert not info.function_tools
+        assert {tool.name for tool in info.function_tools} == {
+            "research",
+            "read_article",
+        }
 
 
 def test_fresh_requests_and_plain_format(settings, install_model):
