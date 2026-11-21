@@ -417,7 +417,7 @@ class DebtParams(Contract):
     description="Total US public debt outstanding by day.",
     params=DebtParams,
     returns=(TimeSeries,),
-    refresh_seconds=None,           # static; a number lets the page re-fetch
+    refresh_seconds=None,  # static; a number lets the page re-fetch
 )
 async def debt(params: DebtParams, context: FetchContext) -> SourceResult:
     page = await context.get(TREASURY_URL.format(days=params.days))
@@ -439,9 +439,16 @@ class LineOptions(Contract):
     log_scale: bool = False
 
 
-@widget(id="line-chart", description="Values over time.", accepts=TimeSeries, options=LineOptions)
+@widget(
+    id="line-chart",
+    description="Values over time.",
+    accepts=TimeSeries,
+    options=LineOptions,
+)
 def line_chart(data: TimeSeries, options: LineOptions) -> Chart:
-    return Chart(title=options.title or data.name, series=data.series, y_log=options.log_scale)
+    return Chart(
+        title=options.title or data.name, series=data.series, y_log=options.log_scale
+    )
 ```
 
 The page knows four primitives: `chart`, `map`, `table`, and `stat`. A widget is a
