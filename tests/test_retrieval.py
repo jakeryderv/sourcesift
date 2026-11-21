@@ -928,3 +928,23 @@ async def test_query_source_constraints_and_failures():
         failed = Research(Settings(), registry, broken, "x", now=NOW)
         await failed.query_source("hn", "")
         assert any("unexpected response" in note for note in failed.limitations)
+
+
+def test_import_does_not_warn_about_optional_socks_support():
+    import subprocess
+    import sys
+
+    script = (
+        "import urllib3\n"
+        # Some optional packages silence urllib3 warnings as a side effect; a
+        # plain install has none of them, so take that side effect away.
+        "urllib3.disable_warnings = lambda *args, **kwargs: None\n"
+        "import sourcesift.cli\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-W", "always", "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "SOCKS support" not in done.stderr
