@@ -1,10 +1,11 @@
-"""Ephemeral conversations shared by terminal and Python clients."""
+"""Conversations shared by terminal and Python clients; in memory unless saved."""
 
 from collections.abc import Sequence
 from copy import deepcopy
 from pathlib import Path
 
 from pydantic import ValidationError
+from pydantic_ai.messages import ModelMessagesTypeAdapter
 
 from sourcesift.agents.runtime import (
     ConversationState,
@@ -14,6 +15,7 @@ from sourcesift.agents.runtime import (
 )
 from sourcesift.core.config import ContextSettings, Settings
 from sourcesift.core.context import prepare_request
+from sourcesift.core.store import SavedConversation, SavedTurn, SessionStore
 from sourcesift.errors import InputError
 from sourcesift.models import (
     ContextDocument,
@@ -27,11 +29,15 @@ from sourcesift.sources import SourceRegistry
 
 
 class Session:
-    """One bounded in-memory conversation. Failed/cancelled turns never commit.
+    """One bounded conversation. Failed/cancelled turns never commit.
 
     Create with ``app.session()``. Settings, sources, and configured context are
     snapshotted. ``reset()`` reloads context files and clears completed turns.
     Only one turn may run at a time; cancel its asyncio task to interrupt it.
+
+    A conversation stays in memory unless created with ``save=True``; it is then
+    written to its own file after each completed turn. ``resume=True`` continues
+    the most recently saved conversation and keeps saving to that file.
     """
 
     def __init__(
@@ -40,9 +46,22 @@ class Session:
         registry: SourceRegistry,
         *,
         files: Sequence[str | Path] = (),
+        save: bool = False,
+        resume: bool = False,
     ) -> None:
+        if resume and files:
+            raise InputError(
+                "A continued conversation keeps its original context; attach files "
+                "in a message instead."
+            )
         self.settings = settings
         self.registry = registry
+        self._store = (
+            SessionStore(settings.sessions.directory) if save or resume else None
+        )
+        self._path: Path | None = None
+        # Why the latest completed turn could not be saved, if it could not.
+        self.save_error: str | None = None
         self._files = tuple(Path(path).expanduser().resolve() for path in files)
         self._busy = False
         self._state = ConversationState()
@@ -50,6 +69,8 @@ class Session:
         self._context: tuple[ContextDocument, ...] = ()
         self._cache = PageCache(settings.limits.feed_cache_seconds)
         self.reset()
+        if resume:
+            self._resume()
 
     @property
     def busy(self) -> bool:
@@ -75,6 +96,62 @@ class Session:
             for item in items
         )
 
+    @property
+    def saved_path(self) -> Path | None:
+        """The file this conversation is saved to, once a turn has been saved."""
+        return self._path if self._path and self._turns else None
+
+    def _resume(self) -> None:
+        assert self._store is not None
+        path = self._store.latest()
+        if path is None:
+            raise InputError("There is no saved conversation to continue.")
+        # Generous bound: the state budget plus results and context snapshots.
+        saved = self._store.read(path, 8 * self.settings.limits.max_session_bytes)
+        try:
+            messages = ModelMessagesTypeAdapter.validate_python(saved.messages)
+        except ValidationError:
+            raise InputError(
+                "The saved conversation cannot be read; start a new one."
+            ) from None
+        state = ConversationState(
+            messages,
+            {item.url: item for item in saved.evidence},
+            saved.next_id,
+            saved.limitations,
+        )
+        if state.size_bytes() > self.settings.limits.max_session_bytes:
+            raise InputError(
+                "The saved conversation exceeds limits.max_session_bytes; start a new one."
+            )
+        self._state = state
+        self._turns = [(turn.prompt, turn.result) for turn in saved.turns]
+        self._context = saved.context
+        self._path = path
+
+    def _save(self) -> None:
+        if self._store is None:
+            return
+        path = self._path or self._store.new_path()
+        self._store.write(
+            path,
+            SavedConversation(
+                model=self.settings.agent.model,
+                messages=ModelMessagesTypeAdapter.dump_python(
+                    self._state.messages, mode="json"
+                ),
+                evidence=tuple(self._state.evidence.values()),
+                next_id=self._state.next_id,
+                limitations=self._state.limitations,
+                turns=tuple(
+                    SavedTurn(prompt=prompt, result=result)
+                    for prompt, result in self._turns
+                ),
+                context=self._context,
+            ),
+        )
+        self._path = path
+
     def reset(self) -> None:
         """Start fresh and reload files; a read error preserves the old session."""
         if self.busy:
@@ -86,6 +163,8 @@ class Session:
         self._state = ConversationState()
         self._turns.clear()
         self._cache.clear()
+        # A fresh conversation gets its own file; the previous one is kept.
+        self._path = None
 
     async def run(
         self,
@@ -138,6 +217,12 @@ class Session:
             )
             self._state = candidate
             self._turns.append((parsed.prompt, result))
+            # A turn that cannot be saved is still complete and returned.
+            try:
+                self._save()
+                self.save_error = None
+            except InputError as exc:
+                self.save_error = str(exc)
             return result
         finally:
             self._busy = False

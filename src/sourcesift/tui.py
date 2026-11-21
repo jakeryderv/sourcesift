@@ -193,8 +193,19 @@ class ChatApp(App[None]):
         )
         yield Footer()
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         self._status("Ready")
+        if self.session.turns:
+            # A continued conversation shows what was said before.
+            transcript = self.query_one("#transcript", VerticalScroll)
+            for prompt, result in self.session.turns:
+                await transcript.mount(
+                    Static("You", classes="label"),
+                    Static(prompt, classes="message", markup=False),
+                    Static("SourceSift", classes="label"),
+                )
+                await self._show_result(result)
+            self._status("Continued saved conversation")
         self.query_one("#prompt", TextArea).focus()
         self.set_interval(0.08, self._flush_draft)
         self.query_one("#completions", OptionList).can_focus = False
@@ -524,7 +535,7 @@ class ChatApp(App[None]):
             # The result is committed: finish rendering it even if Esc arrives now.
             self._turn_started = False
             await self._show_result(result)
-            self._status("Ready")
+            self._status(self.session.save_error or "Ready")
         except asyncio.CancelledError:
             if self._draft_widget is not None:
                 self._draft_widget.update(

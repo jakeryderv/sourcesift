@@ -48,6 +48,13 @@ class ReportsSettings(Contract):
     directory: Path | None = None
 
 
+class SessionsSettings(Contract):
+    """Opt-in conversation saving; the platform default directory if unset."""
+
+    save: bool = False
+    directory: Path | None = None
+
+
 class SourcesSettings(Contract):
     """Enabled catalog additions and freshness settings; selection stays semantic."""
 
@@ -96,6 +103,7 @@ class Settings(Contract):
     context: ContextSettings = Field(default_factory=ContextSettings)
     limits: Limits = Field(default_factory=Limits)
     reports: ReportsSettings = Field(default_factory=ReportsSettings)
+    sessions: SessionsSettings = Field(default_factory=SessionsSettings)
     sources: SourcesSettings = Field(default_factory=SourcesSettings)
 
 
@@ -178,11 +186,12 @@ def load_settings(
             else item
             for item in context["files"]
         ]
-    reports = data.get("reports")
-    if isinstance(reports, dict) and isinstance(reports.get("directory"), str):
-        reports["directory"] = str(
-            path.parent / Path(reports["directory"]).expanduser()
-        )
+    for section in ("reports", "sessions"):
+        table = data.get(section)
+        if isinstance(table, dict) and isinstance(table.get("directory"), str):
+            table["directory"] = str(
+                path.parent / Path(table["directory"]).expanduser()
+            )
     env = EnvSettingsSource(_Environment)()
     agent_env = {}
     if "MODEL" in env:

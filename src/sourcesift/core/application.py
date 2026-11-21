@@ -61,9 +61,25 @@ class SourceSift:
         """
         self.registry = SourceRegistry((*self.registry.list(), source))
 
-    def session(self, *, files: Sequence[str | Path] = ()) -> Session:
-        """Create an independent in-memory conversation with snapshotted context."""
-        return Session(self.settings, self.registry, files=files)
+    def session(
+        self,
+        *,
+        files: Sequence[str | Path] = (),
+        save: bool | None = None,
+        resume: bool = False,
+    ) -> Session:
+        """Create an independent conversation with snapshotted context.
+
+        It stays in memory unless ``save`` is true or ``[sessions].save`` is set.
+        ``resume`` continues the most recently saved conversation.
+        """
+        return Session(
+            self.settings,
+            self.registry,
+            files=files,
+            save=self.settings.sessions.save if save is None else save,
+            resume=resume,
+        )
 
     async def run(
         self,

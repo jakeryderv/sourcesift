@@ -162,7 +162,7 @@ while preserving `ssift ask` for quick requests and automation.
 - [x] Support multiline input, cancel/new-session shortcuts, citations, and loaded-context inspection.
 - [x] Load explicit personal Markdown guidance alongside ordinary background documents.
 - [x] Snapshot context at session start and reload it when starting fresh.
-- [x] Keep storage optional: sessions remain in memory, without automatic persistence.
+- [x] Keep storage optional: sessions remain in memory unless saving is requested with `--save`, `--continue`, or `[sessions].save`.
 
 ### Completion Criteria
 

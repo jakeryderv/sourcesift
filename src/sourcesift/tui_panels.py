@@ -34,7 +34,8 @@ class HelpScreen(ModalScreen[None]):
                 "History: ↑ at the first line / ↓ at the last line.\n"
                 "Attachments: select with @, then click × or delete the mention to remove.\n"
                 "Only selected files are read, when you send.\n"
-                "Ctrl+Q quits. Conversations and model changes stay in memory.",
+                "Ctrl+Q quits. Model changes stay in memory; conversations do too\n"
+                "unless chat was started with --save or --continue.",
                 markup=False,
             )
             for command, description in COMMANDS.items():
