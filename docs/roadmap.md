@@ -6,8 +6,9 @@ returns grounded responses through interactive terminal chat, a reusable SDK, an
 a composable one-off CLI.
 
 **Status:** Phases 0–3 are implemented: package/release tooling, supplied-context
-requests, grounded research, and ephemeral interactive sessions with a Textual TUI.
-Examples in later phases remain planned behavior.
+requests, grounded research, and interactive sessions with a Textual TUI. A
+follow-up round added a wider catalog, live data sources, saved reports, and
+opt-in saved conversations. Examples in later phases remain planned behavior.
 
 **Related documents:** [Use cases and product scope](use-cases.md),
 [architecture and proposed contracts](design.md), and [setup and releases](https://github.com/jakeryderv/sourcesift#readme).
@@ -185,6 +186,26 @@ Prioritized before recommendation workflows:
 - [x] Complete model IDs/names from a cached public catalog, with manual-entry fallback.
 - [x] Add discoverable help and context panels, and validate picker/cancellation behavior.
 
+### Wider sources, reports, and saved conversations
+
+Added after Phase 3, bringing over what proved useful in the `sourcesift-pi`
+prototype while keeping the Python SDK, CLI, and TUI as the product:
+
+- [x] Report the provider's status and short reason on model failures; keep the raw response behind `--debug`.
+- [x] Use a bare `SourceSift/<version>` User-Agent; a URL in it stalled some publisher CDNs.
+- [x] Add `ssift ask --json`, printing the SDK `Result` as one JSON object.
+- [x] Save answers as Markdown reports with `--report`, `/report`, and `save_report`; the model gets no file tool.
+- [x] Add `/evidence` and `/read S3`, and reuse feeds within a conversation for a short time.
+- [x] Grow the catalog from 8 to 31 sources: world news, science, health, more technology, and US policy and government.
+- [x] Add live data sources behind a `query_source` tool, with built-in adapters for Hacker News and US Treasury fiscal data.
+- [x] Add opt-in saved conversations with `--save` and `--continue`.
+
+Open questions from this round:
+
+- [ ] Decide whether documented public APIs may be exempt from the robots check. arXiv search, Open-Meteo, and the US National Weather Service disallow all agents on their API hosts, so weather is not covered and arXiv is feed-only.
+- [ ] Add `/sources` to enable or disable sources for one conversation.
+- [ ] Re-run the live evaluation against the larger catalog and record a new baseline.
+
 ## Phase 4 — Discovery Workflows and Recommendations
 
 **Goal:** Expand the initial research flow into reusable briefings and structured
@@ -277,8 +298,8 @@ added to the product document before finalizing commands.
 
 These are independent follow-ups, not mandatory gates before shipping useful releases:
 
-- **Geographic coverage:** Expand the curated collection to local and global news,
-  validate source coverage, and deliver UC-03. This does not require persistence.
+- **Geographic coverage:** World news sources are now in the catalog. Local news
+  and validated per-region coverage (UC-03) remain open. This does not require persistence.
 - **Rust optimization:** Profile first. Add PyO3/Maturin components only for measured
   benefits, preserve Python contracts, and validate platform-specific wheels.
 - **Ecosystem maturity:** Stabilize SDK/plugin compatibility, expand examples and
@@ -309,9 +330,10 @@ For each implemented capability:
 | Complete | SDK, context, and composable CLI | 1 |
 | Complete | Semantic source selection and grounded research | 2 |
 | Complete | Interactive sessions and Textual chat | 3 |
+| Complete | Wider catalog, live data, reports, saved conversations | 3 follow-up |
 | P1 | Reusable briefings and recommendations | 4 |
 | Later | Third-party plugins and SDK extension contracts | 5 |
-| Optional | Persistence and archive search | 6 |
+| Optional | Database persistence and archive search | 6 |
 | As justified | Wider geography, native optimization, ecosystem maturity | Later extensions |
 
 **Core progression:**

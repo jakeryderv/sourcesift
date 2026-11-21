@@ -45,8 +45,13 @@ export SOURCESIFT_REASONING_EFFORT=medium
 ssift chat
 ssift ask "Check news"
 ssift ask "Check tech and AI"
+ssift ask "What is Hacker News discussing right now?"
+ssift ask "Check world news" --report          # also saves a Markdown report
+ssift ask "Check news" --json | jq .references # one JSON object for other programs
 ssift ask "Summarize this document" --file report.md
 cat report.md | ssift ask "Summarize this" > summary.md
+ssift chat --save                              # keep this conversation
+ssift chat --continue                          # reopen the latest saved one
 ```
 
 ```python
