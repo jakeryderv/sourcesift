@@ -9,6 +9,7 @@ per-launch token and, when the browser sends one, a matching Origin.
 import asyncio
 import json
 import logging
+import re
 import secrets
 import time
 from collections.abc import AsyncIterator, Iterable
@@ -31,14 +32,26 @@ from sourcesift.data import Block
 from sourcesift.errors import InputError, SourceSiftError
 from sourcesift.models import Result, SessionEvent
 from sourcesift.reports import save_report
+from sourcesift.retrieval.http import Fetcher
+from sourcesift.retrieval.urls import RetrievalError
 from sourcesift.tui_panels import source_kind
 
 MAX_SESSIONS = 8
 MAX_BODY_BYTES = 1_048_576
+# Map imagery comes from two fixed services, fetched by this server so the page
+# itself contacts nothing else. Both ask for attribution, which the page shows.
+BASE_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+RADAR_INDEX = "https://api.rainviewer.com/public/weather-maps.json"
+RADAR_TILES = "https://tilecache.rainviewer.com{path}/256/{z}/{x}/{y}/2/1_1.png"
+RADAR_MAX_ZOOM = 7
+RADAR_SECONDS = 300
+BASE_SECONDS = 86400
+MAX_TILES = 600
 _HEADERS = {
     "Cache-Control": "no-store",
     # No inline script or style, no remote content, and no framing by other pages.
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; "
+    # Map tiles are fetched with the token and shown from blob: URLs.
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; "
     "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
@@ -136,6 +149,10 @@ class Api:
         self.sessions: dict[str, Session] = {}
         # Refresh key -> (monotonic time, block), to enforce each source's interval.
         self.refreshed: dict[str, tuple[float, dict[str, Any]]] = {}
+        self.tiles: dict[tuple[str, int, int, int], tuple[float, bytes]] = {}
+        self.radar: tuple[float, str] | None = None
+        # The map tile service asks clients to keep to two connections.
+        self.tile_gate = asyncio.Semaphore(2)
 
     async def _body(self, request: Request) -> dict[str, Any]:
         try:
@@ -258,6 +275,52 @@ class Api:
         self.refreshed[key] = (time.monotonic(), payload)
         return JSONResponse(payload)
 
+    async def _fetch(self, url: str) -> tuple[bytes, str]:
+        try:
+            async with self.tile_gate, Fetcher(self.core.settings.limits) as fetcher:
+                page = await fetcher.get(url, robots=False)
+        except RetrievalError:
+            raise InputError("Map imagery is unavailable right now.") from None
+        return page.body, page.content_type
+
+    async def _radar_path(self) -> str:
+        """The newest radar frame, looked up at most every few minutes."""
+        if self.radar is None or time.monotonic() - self.radar[0] > RADAR_SECONDS:
+            body, _ = await self._fetch(RADAR_INDEX)
+            try:
+                frames = json.loads(body)["radar"]["past"]
+                path = str(frames[-1]["path"])
+            except (ValueError, LookupError, TypeError):
+                path = ""
+            if not re.fullmatch(r"/v2/radar/[A-Za-z0-9_]{1,40}", path):
+                raise InputError("Radar imagery is unavailable right now.")
+            self.radar = (time.monotonic(), path)
+        return self.radar[1]
+
+    async def tile(self, request: Request) -> Response:
+        layer = request.path_params["layer"]
+        z, x, y = (request.path_params[key] for key in ("z", "x", "y"))
+        limit = RADAR_MAX_ZOOM if layer == "radar" else 12
+        if layer not in {"base", "radar"} or not (
+            0 <= z <= limit and 0 <= x < 2**z and 0 <= y < 2**z
+        ):
+            raise InputError("There is no such map tile.")
+        key = (layer, z, x, y)
+        keep = RADAR_SECONDS if layer == "radar" else BASE_SECONDS
+        cached = self.tiles.get(key)
+        if cached is None or time.monotonic() - cached[0] > keep:
+            if layer == "radar":
+                url = RADAR_TILES.format(path=await self._radar_path(), z=z, x=x, y=y)
+            else:
+                url = BASE_TILES.format(z=z, x=x, y=y)
+            body, kind = await self._fetch(url)
+            if not body.startswith(b"\x89PNG") or not kind.startswith("image/png"):
+                raise InputError("Map imagery is unavailable right now.")
+            while len(self.tiles) >= MAX_TILES:
+                self.tiles.pop(next(iter(self.tiles)))
+            cached = self.tiles[key] = (time.monotonic(), body)
+        return Response(cached[1], media_type="image/png")
+
 
 async def _input_error(request: Request, exc: Exception) -> Response:
     return JSONResponse({"error": str(exc)}, 400)
@@ -284,6 +347,7 @@ def create_app(
             Route("/api/sessions/{id}/sources", api.put_sources, methods=["PUT"]),
             Route("/api/sessions/{id}/report", api.report, methods=["POST"]),
             Route("/api/blocks/refresh", api.refresh, methods=["POST"]),
+            Route("/api/tiles/{layer}/{z:int}/{x:int}/{y:int}", api.tile),
             Mount("/", StaticFiles(directory=str(static), html=True)),
         ],
         middleware=[Middleware(Guard, hosts=frozenset(hosts), token=token)],

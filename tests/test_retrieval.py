@@ -27,9 +27,19 @@ from sourcesift.builtin import (
     builtin_toolkit,
     hacker_news,
     us_treasury,
+    weather,
 )
 from sourcesift.contract import Contract
-from sourcesift.data import Chart, Stats, StatView, Table, TableView, TimeSeries
+from sourcesift.data import (
+    Chart,
+    GeoPoints,
+    MapView,
+    Stats,
+    StatView,
+    Table,
+    TableView,
+    TimeSeries,
+)
 from sourcesift.extend import Record, SourceResult, Toolkit, source, widget
 from sourcesift.retrieval import http
 from sourcesift.retrieval.http import Fetcher, Page, public_address
@@ -218,7 +228,7 @@ def test_normalization_idempotent(query):
 
 def test_registry_settings_and_sdk_registration(tmp_path):
     registry = SourceRegistry(BUILTIN_CATALOG)
-    assert len(registry.list()) == 31 and len(BUILTIN_SOURCES) == 29
+    assert len(registry.list()) == 32 and len(BUILTIN_SOURCES) == 29
     # Publishers that refuse article retrieval are registered as summaries only.
     assert {s.id for s in registry.list() if s.capabilities == ("feed",)} == {
         "al-jazeera",
@@ -227,7 +237,11 @@ def test_registry_settings_and_sdk_registration(tmp_path):
     }
     # Live data sources are implemented in Python and declare no feeds.
     live = {s.id for s in registry.list() if "query" in s.capabilities}
-    assert live == {"hacker-news", "us-treasury"} == set(builtin_toolkit().sources)
+    assert (
+        live
+        == {"hacker-news", "us-treasury", "weather"}
+        == set(builtin_toolkit().sources)
+    )
     assert all(
         s.capabilities == ("query",) and not s.feeds
         for s in registry.list()
@@ -1119,6 +1133,143 @@ async def test_widgets_and_sources_are_independent_python_definitions():
     )
     await plain.query_source("readings", {"city": "Oslo"})
     assert any("not queryable" in note for note in plain.limitations)
+
+
+PLACES = {
+    "results": [
+        {
+            "name": "Portland",
+            "admin1": "Oregon",
+            "country": "United States",
+            "country_code": "US",
+            "latitude": 45.52,
+            "longitude": -122.68,
+        },
+        {
+            "name": "Portland",
+            "admin1": "Maine",
+            "country": "United States",
+            "country_code": "US",
+            "latitude": 43.66,
+            "longitude": -70.26,
+        },
+    ]
+}
+FORECAST = {
+    "timezone": "America/New_York",
+    "current": {
+        "time": 1795237200,
+        "temperature_2m": 52.6,
+        "apparent_temperature": 47.2,
+        "relative_humidity_2m": 65,
+        "wind_speed_10m": 7.9,
+        "weather_code": 61,
+    },
+    "hourly": {
+        "time": [1795233600, 1795237200, "bad"],
+        "temperature_2m": [50.1, 52.6, 1],
+        "apparent_temperature": [46.0, None, 1],
+    },
+    "daily": {
+        "time": [1795237200, 1795323600],
+        "weather_code": [61, 3],
+        "temperature_2m_max": [55.0, 60.5],
+        "temperature_2m_min": [41.9, None],
+        "precipitation_probability_max": [80, 10],
+    },
+}
+
+
+def weather_fetcher(places=PLACES, forecast=FORECAST):
+    fetcher = AsyncMock()
+    calls = []
+
+    async def get(url, **options):
+        calls.append((url, options))
+        body = places if "geocoding-api" in url else forecast
+        return page(json.dumps(body), url, "application/json")
+
+    fetcher.get.side_effect = get
+    return fetcher, calls
+
+
+@pytest.mark.asyncio
+async def test_weather_resolves_a_place_and_returns_four_shapes():
+    fetcher, calls = weather_fetcher()
+    run = Research(Settings(), SourceRegistry([weather.source]), fetcher, "x", now=NOW)
+    reply = await run.query_source(
+        "weather", {"place": "Portland, Maine", "units": "imperial", "days": 2}
+    )
+    (geocode, _), (forecast, _) = calls
+    assert geocode.startswith(
+        "https://geocoding-api.open-meteo.com/v1/search?name=Portland&"
+    )
+    # The qualifier picks Maine over the first, larger match.
+    assert "latitude=43.66" in forecast and "longitude=-70.26" in forecast
+    assert "temperature_unit=fahrenheit" in forecast and "forecast_days=2" in forecast
+    # Only this source's declared API hosts skip the robots check.
+    assert all(options == {"robots": False} for _, options in calls)
+    (item,) = run.evidence.values()
+    assert item.title.startswith("Weather for Portland, Maine, United States (")
+    assert item.kind == "api_record" and item.limitations == ()
+    assert (
+        "Now: Light rain. Temperature: 52.6°F; Feels like: 47.2°F; Humidity: 65%"
+        in item.text
+    )
+    assert "Light rain, 55.0°F / 41.9°F, 80.0%" in item.text
+    assert "Overcast, 60.5°F / ?°F, 10.0%" in item.text
+    assert "not an official warning" in item.text
+    assert reply["showable"] == [
+        {
+            "evidence_id": "S1",
+            "data": ["Stats", "GeoPoints", "TimeSeries", "Table"],
+            "widgets": ["line-chart", "table", "stats", "map"],
+        }
+    ]
+    figures, places, hourly, daily = run.datasets["S1"].shapes
+    assert isinstance(figures, Stats) and isinstance(hourly, TimeSeries)
+    assert isinstance(daily, Table)
+    assert [i.label for i in figures.items] == [
+        "Temperature",
+        "Feels like",
+        "Humidity",
+        "Wind",
+        "High today",
+        "Low today",
+    ]
+    assert figures.items[0].unit == "°F" and figures.items[3].unit == "mph"
+    assert isinstance(places, GeoPoints) and places.points[0].value == 52.6
+    assert hourly.timezone == "America/New_York"
+    assert [len(s.points) for s in hourly.series] == [2, 1]
+    assert daily.rows[1] == ("Sun Nov 22", "Overcast", 60.5, None, 10.0)
+    assert run.datasets["S1"].refresh_seconds == 900
+
+    await run.show("S1", "map", {"overlay": "radar", "zoom": 6})
+    view = run.blocks[0].view
+    assert isinstance(view, MapView) and view.overlay == "radar" and view.zoom == 6
+    assert (view.latitude, view.longitude) == (43.66, -70.26)
+    assert view.markers[0].label == "Portland, Maine, United States"
+    assert "Invalid options" in str(
+        (await run.show("S1", "map", {"zoom": 20}))["error"]
+    )
+
+    # An unknown qualifier falls back to the best match; no match is reported.
+    other, calls = weather_fetcher()
+    fallback = Research(
+        Settings(), SourceRegistry([weather.source]), other, "x", now=NOW
+    )
+    await fallback.query_source("weather", {"place": "Portland, Atlantis"})
+    assert "latitude=45.52" in calls[1][0] and "temperature_unit=celsius" in calls[1][0]
+    for places_body, forecast_body, text in (
+        ({"results": []}, FORECAST, "No place with that name"),
+        (PLACES, {"current": {}}, "no current conditions"),
+    ):
+        broken, _ = weather_fetcher(places_body, forecast_body)
+        failed = Research(
+            Settings(), SourceRegistry([weather.source]), broken, "x", now=NOW
+        )
+        await failed.query_source("weather", {"place": "Nowhere"})
+        assert any(text in note for note in failed.limitations) and not failed.datasets
 
 
 @pytest.mark.asyncio

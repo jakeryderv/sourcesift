@@ -30,9 +30,10 @@ The page opens in your default browser. The server stops with Ctrl+C.
   reference, with its publisher, kind, dates, and any limitations.
 - **Visuals.** When the model shows data with a [widget](research.md#visuals), the
   page draws it under the answer: a line chart with a hover and keyboard readout
-  and a table of the same values, a table, or headline figures. Every visual names
+  and a table of the same values, a table, headline figures, or a map you can
+  drag and zoom, optionally under live precipitation radar. Every visual names
   the evidence it was drawn from.
-- **Live data.** A visual from a source that updates (the Hacker News table) is
+- **Live data.** A visual from a source that updates (weather, the Hacker News table) is
   marked Live and re-fetched on that source's interval while the page is visible.
   This asks the source directly; the model is not called and no tokens are spent.
 - **Sources.** Browse the catalog and choose which sources this chat may use.
@@ -53,7 +54,9 @@ The server is for one person on one computer.
 - Requests must name the server's own address and, when the browser reports where
   a request came from, that must be the page itself. This stops other websites
   open in your browser from using the server.
-- The page loads no outside scripts, styles, fonts, or images. Raw HTML and images
+- The page loads no outside scripts, styles, fonts, or images. Map imagery is
+  fetched by the server from OpenStreetMap, and radar from RainViewer, so those
+  two services see which map areas are viewed, but not your browser. Raw HTML and images
   in a model's answer are never rendered.
 - Prompts, attached files, and retrieved text still go to the configured model
   through OpenRouter, as in the terminal.
@@ -61,5 +64,6 @@ The server is for one person on one computer.
 ## Not yet in the page
 
 Model and reasoning choices are set when starting the server, files are attached
-with `--file` rather than uploaded, and there is no map view. The terminal chat
+with `--file` rather than uploaded, and radar is the latest frame only, with no
+animation or forecast. The terminal chat
 remains available as `ssift chat`.

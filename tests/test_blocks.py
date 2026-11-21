@@ -93,6 +93,7 @@ def test_model_chooses_a_widget_and_the_application_draws_it(monkeypatch, capsys
                 "line-chart",
                 "table",
                 "stats",
+                "map",
             ]
             assert sent["widgets"][0]["accepts"] == "TimeSeries"
             assert "log_scale" in sent["widgets"][0]["options"]["properties"]

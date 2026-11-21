@@ -159,6 +159,19 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 .stat-value { font-size: 28px; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .stat-change { font-size: 13px; color: var(--text-secondary); }
 
+.map { position: relative; height: 340px; overflow: hidden; border-radius: 8px; background: var(--surface-2); cursor: grab; touch-action: none; user-select: none; }
+.map:active { cursor: grabbing; }
+.map-layer { position: absolute; inset: 0; pointer-events: none; }
+.map-layer img { position: absolute; left: 0; top: 0; max-width: none; }
+.map-radar { opacity: .7; }
+.map-pin { position: absolute; left: 0; top: 0; }
+.map-dot { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; background: var(--series-1); border: 2px solid #ffffff; box-shadow: 0 1px 4px rgb(0 0 0 / .4); }
+.map-label { position: absolute; left: 12px; top: -12px; white-space: nowrap; font-size: 13px; font-weight: 600; color: #0b0b0b; background: rgb(255 255 255 / .92); border-radius: 6px; padding: 2px 7px; box-shadow: 0 1px 4px rgb(0 0 0 / .25); }
+.map-controls { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.map-controls button { width: 30px; height: 30px; padding: 0; font-size: 18px; line-height: 1; background: #ffffff; color: #0b0b0b; border-color: #c9c8c2; }
+.map-credit { position: absolute; right: 0; bottom: 0; font-size: 11px; color: #33332f; background: rgb(255 255 255 / .8); padding: 1px 6px; border-top-left-radius: 6px; }
+.map-list { font-size: 13px; color: var(--text-secondary); margin: 8px 0 0; padding-left: 18px; }
+
 .tooltip {
   position: fixed; z-index: 10; pointer-events: none;
   background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;

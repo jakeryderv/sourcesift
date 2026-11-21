@@ -1,9 +1,20 @@
 """Built-in widgets. Each accepts one data shape, whatever source it came from."""
 
+from typing import Literal
+
 from pydantic import Field
 
 from sourcesift.contract import Contract
-from sourcesift.data import Chart, Stats, StatView, Table, TableView, TimeSeries
+from sourcesift.data import (
+    Chart,
+    GeoPoints,
+    MapView,
+    Stats,
+    StatView,
+    Table,
+    TableView,
+    TimeSeries,
+)
 from sourcesift.extend import widget
 
 
@@ -36,6 +47,7 @@ def line_chart(data: TimeSeries, options: LineOptions) -> Chart:
     return Chart(
         title=options.title or data.name,
         unit=data.unit,
+        timezone=data.timezone,
         y_log=options.log_scale and positive,
         series=data.series,
     )
@@ -63,3 +75,31 @@ def table(data: Table, options: TableOptions) -> TableView:
 )
 def stats(data: Stats, options: TitleOptions) -> StatView:
     return StatView(title=options.title or data.name, items=data.items)
+
+
+class MapOptions(TitleOptions):
+    zoom: int = Field(
+        default=7, ge=3, le=11, description="3 is a continent, 7 a region, 11 a city."
+    )
+    overlay: Literal["none", "radar"] = Field(
+        default="none",
+        description="'radar' adds a live precipitation radar layer; use it for weather.",
+    )
+
+
+@widget(
+    id="map",
+    description="Places on a map, optionally under live precipitation radar.",
+    accepts=GeoPoints,
+    options=MapOptions,
+)
+def place_map(data: GeoPoints, options: MapOptions) -> MapView:
+    count = len(data.points)
+    return MapView(
+        title=options.title or data.name,
+        latitude=sum(p.latitude for p in data.points) / count,
+        longitude=sum(p.longitude for p in data.points) / count,
+        zoom=options.zoom,
+        markers=data.points,
+        overlay=options.overlay,
+    )

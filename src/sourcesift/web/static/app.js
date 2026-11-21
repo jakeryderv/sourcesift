@@ -1,4 +1,5 @@
 import { el, formatValue, renderChart } from "/chart.js";
+import { renderMap } from "/map.js";
 
 const $ = (id) => document.getElementById(id);
 const transcript = $("transcript");
@@ -89,8 +90,14 @@ function renderStats(body, view) {
   body.replaceChildren(grid);
 }
 
+async function loadTile(layer, z, x, y) {
+  const response = await api(`/api/tiles/${layer}/${z}/${x}/${y}`);
+  return URL.createObjectURL(await response.blob());
+}
+
 function drawView(body, view) {
   if (view.type === "chart") renderChart(body, view, tooltip);
+  else if (view.type === "map") renderMap(body, view, loadTile);
   else if (view.type === "table") renderTable(body, view);
   else renderStats(body, view);
 }
