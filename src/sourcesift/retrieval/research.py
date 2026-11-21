@@ -11,7 +11,7 @@ from pydantic import BaseModel, ValidationError
 
 from sourcesift.builtin import builtin_toolkit
 from sourcesift.core.config import Settings
-from sourcesift.data import Block, Chart, StatView, TableView
+from sourcesift.data import VIEWS, Block
 from sourcesift.extend import FetchContext, Toolkit
 from sourcesift.models import Evidence, Reference, ResearchWindow
 from sourcesift.retrieval.http import Fetcher, Page, PageCache
@@ -270,7 +270,12 @@ class Research:
         try:
             result = await data_source.fetch(
                 parsed,
-                FetchContext(self.fetcher.get, self.now, self.window.start, limit),
+                FetchContext(
+                    data_source.bounded(self.fetcher.get),
+                    self.now,
+                    self.window.start,
+                    limit,
+                ),
             )
             if not result.evidence:
                 self.note(f"{source.name}: the query returned no records.")
@@ -333,7 +338,7 @@ class Research:
         try:
             parsed = chosen.options.model_validate(options or {})
             view = chosen.render(shape, parsed)
-            if not isinstance(view, Chart | TableView | StatView):
+            if not isinstance(view, VIEWS):
                 raise TypeError
         except ValidationError as exc:
             return {"error": f"Invalid options for {chosen.id}: {_problems(exc)}"}

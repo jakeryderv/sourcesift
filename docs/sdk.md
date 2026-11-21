@@ -97,7 +97,7 @@ below.
 
 A data source is an async function with typed parameters. It returns evidence for
 the model to cite and, optionally, the same data as shapes (`TimeSeries`, `Table`,
-`Stats`). A widget is a function from one shape and typed options to a view
+`Stats`, `GeoPoints`). A widget is a function from one shape and typed options to a view
 (`Chart`, `TableView`, `StatView`). Neither refers to the other, so any widget can
 show any source's data of the shape it accepts.
 
@@ -156,6 +156,9 @@ for block in result.blocks:
   `context.now`, `context.since`, and `context.limit` carry the clock, the start of
   the date window, and the per-source item limit.
 - Field descriptions on the parameter and option models are what the model sees.
+- `api_hosts=("api.example.com",)` on `@source` skips the
+  [robots check](research.md#robots-rules-and-public-apis) for those hosts only.
+  Use it for a documented public API whose terms allow programmatic use.
 - Raise `sourcesift.retrieval.urls.RetrievalError` for a failure the user should
   see as a note.
 - A `Block` records the source ID and parameters, so an interface can fetch the

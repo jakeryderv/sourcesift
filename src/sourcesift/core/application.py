@@ -13,7 +13,7 @@ from sourcesift.builtin import BUILTIN_CATALOG, builtin_toolkit
 from sourcesift.core.config import Settings, load_settings
 from sourcesift.core.context import prepare_request
 from sourcesift.core.session import Session
-from sourcesift.data import Block, Chart, StatView, TableView
+from sourcesift.data import VIEWS, Block
 from sourcesift.errors import ConfigurationError, InputError
 from sourcesift.extend import DataSource, FetchContext, Toolkit, Widget
 from sourcesift.models import Request, Result
@@ -137,7 +137,10 @@ class SourceSift:
         try:
             async with Fetcher(self.settings.limits) as fetcher:
                 result = await data_source.fetch(
-                    params, FetchContext(fetcher.get, now, window.start, limit)
+                    params,
+                    FetchContext(
+                        data_source.bounded(fetcher.get), now, window.start, limit
+                    ),
                 )
             shape = next(
                 s
@@ -145,7 +148,7 @@ class SourceSift:
                 if isinstance(s, data_source.returns) and isinstance(s, chosen.accepts)
             )
             view = chosen.render(shape, options)
-            if not isinstance(view, Chart | TableView | StatView):
+            if not isinstance(view, VIEWS):
                 raise TypeError
         except RetrievalError as exc:
             raise InputError(f"Could not refresh: {exc}") from None

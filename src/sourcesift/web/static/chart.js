@@ -24,7 +24,7 @@ export function formatValue(value, unit = "", short = true) {
   const text = (short ? compact : exact).format(Math.abs(value));
   const sign = value < 0 ? "−" : "";
   if (unit === "USD") return `${sign}$${text}`;
-  if (unit === "%") return `${sign}${text}%`;
+  if (unit === "%" || unit.startsWith("°")) return `${sign}${text}${unit}`;
   return unit ? `${sign}${text} ${unit}` : sign + text;
 }
 
@@ -75,10 +75,13 @@ export function renderChart(container, view, tooltip) {
   const ticks = log ? logTicks(Math.min(...values), Math.max(...values)) : niceTicks(Math.min(...values), Math.max(...values));
   const [lo, hi] = [ticks[0], ticks[ticks.length - 1]];
   const span = times[times.length - 1] - times[0];
-  const dateLabel = new Intl.DateTimeFormat("en", span > 300 * 864e5
-    ? { month: "short", year: "numeric", timeZone: "UTC" }
-    : { month: "short", day: "numeric", timeZone: "UTC" });
-  const fullDate = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
+  // Short spans are hourly data: label times in the zone the data is about.
+  const timeZone = view.timezone || "UTC";
+  const hourly = span < 12 * 864e5;
+  const axisFormat = hourly ? { weekday: "short", hour: "numeric" } : span > 300 * 864e5 ? { month: "short", year: "numeric" } : { month: "short", day: "numeric" };
+  const fullFormat = hourly ? { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" } : { dateStyle: "medium" };
+  const dateLabel = new Intl.DateTimeFormat("en", { ...axisFormat, timeZone });
+  const fullDate = new Intl.DateTimeFormat("en", { ...fullFormat, timeZone });
   let active = null;
 
   function draw() {

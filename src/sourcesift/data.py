@@ -1,8 +1,8 @@
 """Typed data shared by sources and widgets, and what a page can draw.
 
-A source returns *shapes* (``TimeSeries``, ``Table``, ``Stats``). A widget accepts
-one shape and returns a *view* (``Chart``, ``TableView``, ``StatView``), one of the
-few things an interface knows how to draw. Sources and widgets never refer to each
+A source returns *shapes* (``TimeSeries``, ``Table``, ``Stats``, ``GeoPoints``). A
+widget accepts one shape and returns a *view* (``Chart``, ``TableView``,
+``StatView``, ``MapView``), one of the few things an interface knows how to draw. Sources and widgets never refer to each
 other, so any widget can show any source's data of the shape it accepts.
 """
 
@@ -35,6 +35,8 @@ class TimeSeries(Contract):
 
     name: str = Field(min_length=1, max_length=120)
     unit: str = Field(default="", max_length=24)
+    # IANA zone in which to label times, such as the place a forecast is for.
+    timezone: str = Field(default="UTC", max_length=64)
     series: tuple[Series, ...] = Field(min_length=1, max_length=12)
 
 
@@ -75,6 +77,23 @@ class Stats(Contract):
     items: tuple[Stat, ...] = Field(min_length=1, max_length=12)
 
 
+class GeoPoint(Contract):
+    """A place, with an optional value to show beside its label."""
+
+    label: str = Field(min_length=1, max_length=80)
+    latitude: float = Field(ge=-85, le=85)
+    longitude: float = Field(ge=-180, le=180)
+    value: float | None = Field(default=None, allow_inf_nan=False)
+    unit: str = Field(default="", max_length=24)
+
+
+class GeoPoints(Contract):
+    """Shape: one or more located items."""
+
+    name: str = Field(min_length=1, max_length=120)
+    points: tuple[GeoPoint, ...] = Field(min_length=1, max_length=50)
+
+
 class Chart(Contract):
     """View: lines or bars over time."""
 
@@ -82,6 +101,7 @@ class Chart(Contract):
     title: str = Field(max_length=120)
     kind: Literal["line", "bar"] = "line"
     unit: str = Field(default="", max_length=24)
+    timezone: str = Field(default="UTC", max_length=64)
     y_log: bool = False
     series: tuple[Series, ...] = Field(min_length=1, max_length=12)
 
@@ -103,7 +123,20 @@ class StatView(Contract):
     items: tuple[Stat, ...] = Field(min_length=1, max_length=12)
 
 
-View = Chart | TableView | StatView
+class MapView(Contract):
+    """View: markers on a map, optionally under a live precipitation radar layer."""
+
+    type: Literal["map"] = "map"
+    title: str = Field(max_length=120)
+    latitude: float = Field(ge=-85, le=85)
+    longitude: float = Field(ge=-180, le=180)
+    zoom: int = Field(default=7, ge=2, le=12)
+    markers: tuple[GeoPoint, ...] = Field(max_length=50)
+    overlay: Literal["none", "radar"] = "none"
+
+
+View = Chart | TableView | StatView | MapView
+VIEWS = (Chart, TableView, StatView, MapView)
 
 
 class Block(Contract):

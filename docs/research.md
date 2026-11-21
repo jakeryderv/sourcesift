@@ -63,16 +63,29 @@ records are cited like any other evidence, with the kind `api record`.
 | ID | Parameters | Evidence | Data for visuals |
 |---|---|---|---|
 | `hacker-news` | `query`: keywords, or empty for the current front page | Story titles, points, comment counts, and submitted links; keyword results are limited to the date window | A table of the stories |
+| `weather` | `place`: a city or town, optionally with a region or country; `days` of forecast (1 to 7, default 3); `units`: `metric` or `imperial` | Current conditions and the daily forecast for the place it resolved, with local observation time | Headline figures, hourly temperature series, a daily forecast table, and the location for a map |
 | `us-treasury` | `dataset`: `debt`, `interest-rates`, or `exchange-rates`; `days` of history for `debt` (7 to 3650, default 30) | The latest published figures with their record date; for `debt`, also the range of the history retrieved | `debt`: a time series and headline figures. Others: a table |
 
 Each is defined in Python with a parameter model. Parameters are validated before
 any request is made; invalid ones are returned to the model to correct. A source
 requests only its own documented endpoints, so the model cannot choose a host or
 path. Requests use the same bounded HTTP adapter as feeds, so address checks,
-robots rules, byte limits, and the request budget all apply. Hacker News points
-and comments measure attention, not accuracy. A Treasury record date is a
+robots rules, byte limits, and the request budget all apply. Weather comes from [Open-Meteo](https://open-meteo.com/)
+forecast models (CC BY 4.0, free for non-commercial use); it is not an official
+warning or alert service. Hacker News points and comments measure attention, not
+accuracy. A Treasury record date is a
 reporting period rather than a publication time, so those records are not
 filtered by the date window.
+
+### Robots rules and public APIs
+
+A `robots.txt` file tells crawlers which pages not to collect. Some public data
+APIs disallow all crawlers on their API host while documenting that host for
+programs to call. A data source can therefore declare the API hosts it calls, and
+requests to exactly those hosts skip the robots check. Only the weather source
+does (`api.open-meteo.com` and `geocoding-api.open-meteo.com`). Feeds, articles,
+discovery, and every other host are still checked, and address checks, size
+limits, timeouts, and the request budget apply to every request.
 
 ## Visuals
 
@@ -85,6 +98,7 @@ headline figures) alongside the text the model reads. The model may then call th
 | `line-chart` | Time series | `title`, `log_scale` |
 | `table` | Table | `title`, `max_rows` |
 | `stats` | Headline figures | `title` |
+| `map` | Located places | `title`, `zoom`, `overlay` (`none` or `radar`) |
 
 - The model chooses the widget and its options. It cannot pass values: the
   application builds the visual from what the source returned, so a number on
@@ -97,12 +111,11 @@ headline figures) alongside the text the model reads. The model may then call th
   saved conversation.
 
 Visuals are returned as `Result.blocks` and in `--json` output. The terminal only
-lists them by widget and title; drawing them is the job of the planned
-[web app](design.md#11-proposal-web-app-typed-data-and-display-blocks).
+lists them by widget and title; the [web app](web.md) draws them.
 
-arXiv, Open-Meteo, and the US National Weather Service publish APIs whose hosts
-disallow all automated agents in `robots.txt`. SourceSift honors that, so there is
-no weather source and arXiv is read through its RSS feed without search.
+arXiv's search API also disallows all automated agents in `robots.txt`. It has
+not been given the exemption above, so arXiv is read through its RSS feed without
+search.
 
 ## Selection and retrieval
 

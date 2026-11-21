@@ -749,7 +749,7 @@ async def test_sources_panel_lists_and_limits_sources(session):
         editor = app.query_one("#prompt", TextArea)
         status = app.query_one("#status", Static)
         total = len(session.sources)
-        assert total == 31 and all(enabled for _, enabled in session.sources)
+        assert total == 32 and all(enabled for _, enabled in session.sources)
 
         editor.load_text("/sources")
         await pilot.press("escape", "enter")
@@ -767,7 +767,7 @@ async def test_sources_panel_lists_and_limits_sources(session):
         assert "PBS NewsHour (pbs)" in str(detail.content)
         await pilot.press("escape")
         await pilot.pause()
-        assert "30 of 31 sources enabled" in str(status.content)
+        assert "31 of 32 sources enabled" in str(status.content)
         assert "npr" not in {s.id for s in session.registry.list()}
         assert [s.id for s, enabled in session.sources if not enabled] == ["npr"]
 
@@ -775,16 +775,16 @@ async def test_sources_panel_lists_and_limits_sources(session):
         editor.load_text("/sources")
         await pilot.press("escape", "enter")
         choices = app.screen.query_one("#source-list", SelectionList)
-        assert len(choices.selected) == 30
+        assert len(choices.selected) == 31
         await pilot.press("n")
         assert choices.selected == []
         await pilot.press("escape")
         await pilot.pause()
-        assert session.registry.list() == () and "0 of 31" in str(status.content)
+        assert session.registry.list() == () and "0 of 32" in str(status.content)
         editor.load_text("/sources")
         await pilot.press("escape", "enter", "a", "escape")
         await pilot.pause()
-        assert len(session.registry.list()) == 31
+        assert len(session.registry.list()) == 32
 
         # A new conversation starts with every source again.
         session.enable_sources(["npr", "hacker-news"])
@@ -792,7 +792,7 @@ async def test_sources_panel_lists_and_limits_sources(session):
         with pytest.raises(InputError, match="must exist"):
             session.enable_sources(["npr", "missing"])
         session.reset()
-        assert len(session.registry.list()) == 31
+        assert len(session.registry.list()) == 32
 
         app._turn_active = True
         editor.load_text("/sources")

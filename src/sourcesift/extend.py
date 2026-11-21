@@ -16,6 +16,7 @@ from sourcesift.contract import Contract
 from sourcesift.data import View
 from sourcesift.errors import ConfigurationError
 from sourcesift.retrieval.http import Page
+from sourcesift.retrieval.urls import hostname
 from sourcesift.sources import Source
 
 
@@ -62,6 +63,25 @@ class DataSource:
     returns: tuple[type[BaseModel], ...]
     fetch: Fetch
     refresh_seconds: int | None = None
+    api_hosts: tuple[str, ...] = ()
+
+    def bounded(
+        self, get: Callable[..., Awaitable[Page]]
+    ) -> Callable[[str], Awaitable[Page]]:
+        """The fetcher's ``get`` as this source may use it.
+
+        A robots.txt file addresses crawlers, and some public data APIs disallow
+        all of them while documenting the API for programs. Requests to a host
+        this source declares in ``api_hosts`` skip that one check. Address
+        checks, size limits, timeouts, and the request budget always apply.
+        """
+
+        async def bounded_get(url: str) -> Page:
+            if hostname(url) in self.api_hosts:
+                return await get(url, robots=False)
+            return await get(url)
+
+        return bounded_get
 
 
 @dataclass(frozen=True)
@@ -91,11 +111,14 @@ def source(
     geography: str = "Unspecified",
     aliases: tuple[str, ...] = (),
     refresh_seconds: int | None = None,
+    api_hosts: tuple[str, ...] = (),
 ) -> Callable[[Fetch], DataSource]:
     """Turn ``async def fetch(params, context) -> SourceResult`` into a data source.
 
     ``params`` is validated before the function runs; its field descriptions are
     what the model sees. ``refresh_seconds`` lets an interface re-fetch on a timer.
+    ``api_hosts`` names hosts of documented public APIs whose robots.txt is not
+    consulted; list one only when the service's terms allow programmatic use.
     """
     if refresh_seconds is not None and refresh_seconds < 1:
         raise ConfigurationError("refresh_seconds must be positive.")
@@ -109,7 +132,9 @@ def source(
         aliases=aliases,
         capabilities=("query",),
     )
-    return lambda fetch: DataSource(entry, params, returns, fetch, refresh_seconds)
+    return lambda fetch: DataSource(
+        entry, params, returns, fetch, refresh_seconds, api_hosts
+    )
 
 
 def widget(

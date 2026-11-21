@@ -97,7 +97,7 @@ def test_turn_streams_progress_then_a_result_with_visuals(served):
     client, fetched = served
     session = client.post("/api/sessions", json={}, headers=AUTH).json()
     assert session["model"] == "example/test" and session["turns"] == []
-    assert len(session["sources"]) == 31
+    assert len(session["sources"]) == 32
     assert {"id", "name", "kind", "description", "enabled"} <= set(
         session["sources"][0]
     )
@@ -172,6 +172,59 @@ def test_sources_can_be_limited_for_one_conversation(served):
         assert stream[-1]["turn"]["result"]["blocks"] == []
     other = client.post("/api/sessions", json={}, headers=AUTH).json()
     assert all(source["enabled"] for source in other["sources"])
+
+
+def test_map_tiles_are_fetched_by_the_server_and_cached(monkeypatch, served):
+    client, _ = served
+    seen = []
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 20
+
+    async def get(self, url, *, robots=True):
+        seen.append(url)
+        assert robots is False
+        if url.endswith("weather-maps.json"):
+            body = {
+                "radar": {
+                    "past": [{"path": "/v2/radar/old"}, {"path": "/v2/radar/abc123"}]
+                }
+            }
+            return Page(url, url, json.dumps(body).encode(), "application/json")
+        if url.endswith("/9/9.png"):
+            return Page(url, url, b"<html>", "text/html")
+        return Page(url, url, png, "image/png")
+
+    monkeypatch.setattr(Fetcher, "get", get)
+    assert client.get("/api/tiles/base/7/32/47").status_code == 403
+    tile = client.get("/api/tiles/base/7/32/47", headers=AUTH)
+    assert tile.status_code == 200 and tile.content == png
+    assert tile.headers["content-type"] == "image/png"
+    assert client.get("/api/tiles/base/7/32/47", headers=AUTH).content == png
+    assert seen == ["https://tile.openstreetmap.org/7/32/47.png"]
+
+    radar = client.get("/api/tiles/radar/5/8/11", headers=AUTH)
+    assert radar.status_code == 200
+    # The newest frame is used, from the fixed tile host.
+    assert (
+        seen[-1]
+        == "https://tilecache.rainviewer.com/v2/radar/abc123/256/5/8/11/2/1_1.png"
+    )
+    client.get("/api/tiles/radar/5/8/12", headers=AUTH)
+    assert sum(url.endswith("weather-maps.json") for url in seen) == 1
+
+    count = len(seen)
+    for path in (
+        "radar/8/1/1",
+        "base/13/1/1",
+        "base/3/8/0",
+        "other/3/1/1",
+        "base/4/9/9",
+    ):
+        assert client.get(f"/api/tiles/{path}", headers=AUTH).status_code == 400
+    assert (
+        len(seen) == count + 1
+    )  # only the last was requested, and it was not an image
+    assert "blob:" in client.get("/").headers["content-security-policy"]
+    assert client.get("/map.js").status_code == 200
 
 
 def test_markdown_tables_render_and_links_keep_safe_schemes():

@@ -202,11 +202,12 @@ prototype while keeping the Python SDK, CLI, and TUI as the product:
 
 - [x] Make live data sources typed Python definitions that can return data shapes, add widgets and a `show` tool, and return visuals as `Result.blocks` (step 1 of the [web app proposal](design.md#11-proposal-web-app-typed-data-and-display-blocks)).
 - [x] Build `ssift web`: a local page with chat, citations, sources, and drawn visuals, plus model-free refresh of live data (step 2).
-- [ ] Add weather with a map view, then stock prices (steps 3 and 4).
+- [x] Add a weather source and a map view with a radar layer (step 3).
+- [ ] Add stock prices with a live chart (step 4).
 
 Open questions from this round:
 
-- [ ] Decide whether documented public APIs may be exempt from the robots check. arXiv search, Open-Meteo, and the US National Weather Service disallow all agents on their API hosts, so weather is not covered and arXiv is feed-only.
+- [x] Decide whether documented public APIs may be exempt from the robots check: yes, per source and per declared host. Weather (Open-Meteo) uses it; arXiv search could be added the same way.
 - [x] Add `/sources` to browse the catalog and enable or disable sources for one conversation.
 - [ ] Re-run the live evaluation against the larger catalog and record a new baseline.
 
