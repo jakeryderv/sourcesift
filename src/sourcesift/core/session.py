@@ -15,7 +15,14 @@ from sourcesift.agents.runtime import (
 from sourcesift.core.config import ContextSettings, Settings
 from sourcesift.core.context import prepare_request
 from sourcesift.errors import InputError
-from sourcesift.models import ContextDocument, Request, Result, SessionEvent
+from sourcesift.models import (
+    ContextDocument,
+    Reference,
+    Request,
+    Result,
+    SessionEvent,
+)
+from sourcesift.retrieval.http import PageCache
 from sourcesift.sources import SourceRegistry
 
 
@@ -41,6 +48,7 @@ class Session:
         self._state = ConversationState()
         self._turns: list[tuple[str, Result]] = []
         self._context: tuple[ContextDocument, ...] = ()
+        self._cache = PageCache(settings.limits.feed_cache_seconds)
         self.reset()
 
     @property
@@ -58,6 +66,15 @@ class Session:
         """Completed user prompts and validated results in order."""
         return tuple(self._turns)
 
+    @property
+    def evidence(self) -> tuple[Reference, ...]:
+        """Evidence retained for citations so far, in citation-ID order, without text."""
+        items = sorted(self._state.evidence.values(), key=lambda item: int(item.id[1:]))
+        return tuple(
+            Reference.model_validate(item.model_dump(exclude={"text"}))
+            for item in items
+        )
+
     def reset(self) -> None:
         """Start fresh and reload files; a read error preserves the old session."""
         if self.busy:
@@ -68,6 +85,7 @@ class Session:
         self._context = context
         self._state = ConversationState()
         self._turns.clear()
+        self._cache.clear()
 
     async def run(
         self,
@@ -116,6 +134,7 @@ class Session:
                 self.registry,
                 state=candidate,
                 on_event=on_event,
+                cache=self._cache,
             )
             self._state = candidate
             self._turns.append((parsed.prompt, result))

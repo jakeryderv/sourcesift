@@ -130,6 +130,21 @@ async def test_followups_retain_evidence_and_upgrade_second_article(
     assert second.http_requests == 1 and third.http_requests == 0
     assert any("retained" in note for note in third.limitations)
     assert len(session.turns) == 3
+    # Retained evidence is listed by citation ID without its text.
+    assert [(item.id, item.kind) for item in session.evidence] == [
+        ("S1", "feed_summary"),
+        ("S2", "article"),
+    ]
+    assert not hasattr(session.evidence[0], "text")
+    # A second request for the same feed in this conversation reuses the cached page.
+    calls = 0
+    fourth = await session.run("Check news")
+    assert fourth.http_requests == 0
+    session.reset()
+    assert session.evidence == ()
+    calls = 0
+    fifth = await session.run("Check news")
+    assert fifth.http_requests == 1
 
 
 @pytest.mark.asyncio

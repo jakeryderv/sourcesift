@@ -17,6 +17,8 @@ COMMANDS = {
     "/new": "Start fresh and reload context",
     "/context": "Inspect loaded personal context",
     "/model": "Choose model and reasoning effort",
+    "/evidence": "List the evidence retained for citations",
+    "/read": "Read a cited article in full, for example /read S3",
     "/report": "Save the latest answer as a Markdown report",
     "/cancel": "Stop the active research turn",
     "/help": "Show controls and commands",

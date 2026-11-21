@@ -75,6 +75,8 @@ Available commands:
 | `/new` | Start a new session and reload context |
 | `/context` | Inspect the loaded context; Esc closes the viewer |
 | `/model` | Edit the model, reasoning effort, and API key for this chat |
+| `/evidence` | List the evidence retained for citations, by ID |
+| `/read S3` | Ask for the cited article in full and what it adds beyond the feed summary |
 | `/report` | Save the latest answer, with its references and notes, as a Markdown report |
 | `/cancel` | Cancel the active turn |
 | `/help` | Open the controls and commands panel |

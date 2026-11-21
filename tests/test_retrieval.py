@@ -682,3 +682,59 @@ async def test_redirect_merge_keeps_unique_citation_ids():
     ids = [item.id for item in r.evidence.values()]
     assert len(ids) == len(set(ids)) == 2
     assert set(ids) == {"S2", "S3"}
+
+
+@pytest.mark.asyncio
+async def test_conversation_cache_reuses_feeds_but_not_articles():
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from sourcesift.retrieval.http import PageCache
+
+    cache = PageCache(600)
+    registry = SourceRegistry([SOURCE])
+    fetcher = AsyncMock()
+    first_page = page(feed(entry()))
+    fetcher.get.return_value = first_page
+    first = Research(Settings(), registry, fetcher, "news", now=NOW, cache=cache)
+    await first.research(["fixture"], [], [], "any")
+    second = Research(Settings(), registry, fetcher, "again", now=NOW, cache=cache)
+    await second.research(["fixture"], [], [], "any")
+    assert fetcher.get.await_count == 1
+    # Reused evidence reports when its bytes were really fetched.
+    (item,) = second.evidence.values()
+    assert item.retrieved_at == first_page.fetched_at
+
+    # Articles are always retrieved again, even within the cache lifetime.
+    url = "https://example.com/story"
+    fetcher.get.return_value = page(
+        "<html><body><article><h1>Library approved</h1><p>"
+        + "The council approved a new library after a long debate. " * 20
+        + "</p></article></body></html>",
+        url,
+        "text/html",
+    )
+    await second.read_article(url)
+    third = Research(
+        Settings(),
+        registry,
+        fetcher,
+        "more",
+        now=NOW,
+        cache=cache,
+        previous=second.all_evidence,
+        next_id=second.next_id,
+    )
+    await third.read_article(url)
+    assert fetcher.get.await_count == 3
+
+    # Expired entries are fetched again; a zero lifetime stores nothing.
+    stale = replace(first_page, fetched_at=first_page.fetched_at - timedelta(hours=1))
+    cache.set("https://example.com/feed", stale)
+    assert cache.get("https://example.com/feed") is None
+    disabled = PageCache(0)
+    disabled.set("https://example.com/feed", first_page)
+    assert disabled.get("https://example.com/feed") is None
+    cache.set("https://example.com/feed", first_page)
+    cache.clear()
+    assert cache.get("https://example.com/feed") is None

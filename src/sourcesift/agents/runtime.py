@@ -37,7 +37,7 @@ from pydantic_ai.usage import UsageLimits
 from sourcesift.core.config import Settings
 from sourcesift.errors import ConfigurationError, InputError, ModelError
 from sourcesift.models import Evidence, Request, Result, SessionEvent, Usage
-from sourcesift.retrieval.http import Fetcher
+from sourcesift.retrieval.http import Fetcher, PageCache
 from sourcesift.retrieval.research import CITATION, Research
 from sourcesift.sources import SourceRegistry
 
@@ -202,6 +202,7 @@ async def run_agent(
     *,
     state: ConversationState | None = None,
     on_event: EventHandler | None = None,
+    cache: PageCache | None = None,
 ) -> Result:
     """Execute bounded tools and one citation-repair retry without provider retries."""
     validate_model_access(settings)
@@ -213,6 +214,7 @@ async def run_agent(
         request.prompt,
         previous=state.evidence if state else None,
         next_id=state.next_id if state else 1,
+        cache=cache,
     )
     payload = json.dumps(
         {

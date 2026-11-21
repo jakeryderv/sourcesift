@@ -486,7 +486,7 @@ async def test_file_completion_in_middle_and_duplicate_basenames(
         (tmp_path / name / "notes.md").write_text(name)
     captured = []
 
-    async def run(request, settings, registry, *, state, on_event):
+    async def run(request, settings, registry, *, state, on_event, cache):
         captured.append(request)
         return Result(answer="Done", model="example/test")
 
@@ -671,3 +671,68 @@ async def test_model_catalog_worker_cancelled_when_setup_closes(monkeypatch):
         await pilot.press("escape")
         await asyncio.wait_for(cancelled.wait(), 2)
         assert not app.workers
+
+
+@pytest.mark.asyncio
+async def test_read_and_evidence_commands(session, monkeypatch):
+    from datetime import UTC, datetime
+
+    from sourcesift.models import Evidence
+    from sourcesift.tui import EvidenceScreen
+
+    prompts = []
+
+    async def respond(prompt, *, on_event):
+        prompts.append(prompt)
+        return Result(answer="Done", model="example/test")
+
+    monkeypatch.setattr(session, "run", respond)
+    app = ChatApp(session)
+    async with app.run_test(size=(100, 30)) as pilot:
+        editor = app.query_one("#prompt", TextArea)
+        status = app.query_one("#status", Static)
+        for command, message in [
+            ("/read", "Usage: /read S3"),
+            ("/read S1 S2", "Usage: /read S3"),
+            ("/read s9", "No evidence with ID S9"),
+        ]:
+            editor.load_text(command)
+            await pilot.press("escape", "enter")
+            assert message in str(status.content)
+            assert editor.text == command and not prompts
+        editor.load_text("/evidence")
+        await pilot.press("escape", "enter")
+        assert isinstance(app.screen, EvidenceScreen)
+        assert "No evidence yet" in "".join(
+            str(widget.content) for widget in app.screen.query(Static)
+        )
+        await pilot.press("escape")
+
+        session._state.evidence["https://example.com/story"] = Evidence(
+            id="S1",
+            title="Library [b]approved[/b]",
+            url="https://example.com/story",
+            requested_url="https://example.com/feed",
+            retrieved_from="https://example.com/feed",
+            publisher="example.com",
+            published_at=datetime(2026, 1, 2, tzinfo=UTC),
+            retrieved_at=datetime(2026, 1, 2, tzinfo=UTC),
+            kind="feed_summary",
+            text="Summary.",
+        )
+        editor.load_text("/evidence")
+        await pilot.press("escape", "enter")
+        listing = "".join(str(widget.content) for widget in app.screen.query(Static))
+        assert "[S1] Library [b]approved[/b]" in listing
+        assert "feed summary · 2026-01-02" in listing
+        await pilot.press("escape")
+
+        editor.load_text("/read [s1]")
+        await pilot.press("escape", "enter")
+        await app.workers.wait_for_complete()
+        expected = (
+            "Read [S1] in full (https://example.com/story) and report what the "
+            "article adds beyond the feed summary, citing it."
+        )
+        assert prompts == [expected]
+        assert editor.text == ""

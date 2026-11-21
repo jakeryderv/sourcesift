@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from sourcesift.core.config import Settings
 from sourcesift.models import Evidence, Reference, ResearchWindow
-from sourcesift.retrieval.http import Fetcher, Page
+from sourcesift.retrieval.http import Fetcher, Page, PageCache
 from sourcesift.retrieval.parsing import (
     ParsedItem,
     discover_feeds,
@@ -50,10 +50,12 @@ class Research:
         now: datetime | None = None,
         previous: dict[str, Evidence] | None = None,
         next_id: int = 1,
+        cache: PageCache | None = None,
     ) -> None:
         self.settings = settings
         self.registry = registry
         self.fetcher = fetcher
+        self.cache = cache
         self.now = now or datetime.now(UTC)
         self.window: ResearchWindow | None = None
         self.selected: list[str] = []
@@ -210,18 +212,33 @@ class Research:
             self.note(str(exc))
         return self._reply()
 
+    async def _feed_page(self, url: str) -> Page:
+        """Fetch a feed or its discovery page, reusing this conversation's recent copy.
+
+        A cached page costs no request; it passed the robots check when fetched.
+        Articles are never cached, so reading one always retrieves it again.
+        """
+        key = normalize_url(url)
+        cached = self.cache.get(key) if self.cache is not None else None
+        if cached is not None:
+            return cached
+        page = await self.fetcher.get(url)
+        if self.cache is not None:
+            self.cache.set(key, page)
+        return page
+
     async def _source(self, source: Source) -> None:
         if "feed" not in source.capabilities:
             raise RetrievalError("This source does not offer feed access.")
         feeds = source.feeds
         if not feeds:
-            feeds = discover_feeds(await self.fetcher.get(source.website))
+            feeds = discover_feeds(await self._feed_page(source.website))
             if not feeds:
                 raise RetrievalError("No RSS/Atom feed was declared by the website.")
         count = 0
         for url in feeds:
             try:
-                page = await self.fetcher.get(url)
+                page = await self._feed_page(url)
                 items, malformed = parse_feed(page)
                 if malformed:
                     self.note(
@@ -365,7 +382,7 @@ class Research:
             author=item.author,
             published_at=item.published_at,
             updated_at=item.updated_at,
-            retrieved_at=datetime.now(UTC),
+            retrieved_at=page.fetched_at,
             kind=kind,
             limitations=tuple(warnings),
             text=text,
