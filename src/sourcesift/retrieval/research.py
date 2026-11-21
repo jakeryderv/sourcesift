@@ -52,6 +52,7 @@ class Dataset:
     shapes: tuple[BaseModel, ...]
     evidence_ids: tuple[str, ...]
     refresh_seconds: int | None
+    window: WindowName = "recent"
 
 
 def _problems(exc: ValidationError) -> str:
@@ -294,6 +295,7 @@ class Research:
                     shapes,
                     tuple(ids),
                     data_source.refresh_seconds,
+                    self.window.label,
                 )
                 self.datasets.update(dict.fromkeys(ids, dataset))
         except RetrievalError as exc:
@@ -343,6 +345,7 @@ class Research:
             source_id=dataset.source_id,
             params=dataset.params,
             options=parsed.model_dump(mode="json"),
+            window=dataset.window,
             refresh_seconds=dataset.refresh_seconds,
             view=view,
         )

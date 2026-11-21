@@ -150,6 +150,79 @@ def main() -> None:
 
 
 @app.command
+def web(
+    *,
+    file: Annotated[list[Path] | None, Parameter(name=("--file", "-f"))] = None,
+    config: Path | None = None,
+    model: str | None = None,
+    reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+    | None = None,
+    save: bool = False,
+    continue_: Annotated[bool, Parameter(name=("--continue", "-c"))] = False,
+    port: int = 0,
+    browser: bool = True,
+) -> None:
+    """Open the research chat as a local web page that can draw charts and tables.
+
+    The server listens on this computer only and stops with Ctrl+C.
+
+    Parameters:
+        file: Context file loaded at session start; repeat for multiple files.
+        save: Save each conversation to a file after each completed turn.
+        continue_: Continue the most recently saved conversation.
+        config: TOML file; overrides SOURCESIFT_CONFIG and the user default.
+        model: OpenRouter provider/model ID.
+        reasoning_effort: Optional reasoning effort supported by the selected model.
+        port: Port to listen on; by default a free one is chosen.
+        browser: Open the page in the default browser.
+    """
+    import secrets
+    import socket
+    import webbrowser
+
+    try:
+        import uvicorn
+
+        from sourcesift.web.server import create_app
+    except ImportError:
+        raise InputError(
+            'The web app needs extra packages; install "sourcesift[web]".'
+        ) from None
+
+    overrides = {}
+    if model is not None:
+        overrides["model"] = model
+    if reasoning_effort is not None:
+        overrides["reasoning_effort"] = reasoning_effort
+    settings = load_settings(config, overrides={"agent": overrides})
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        listener.bind(("127.0.0.1", port))
+    except OSError:
+        listener.close()
+        raise InputError(f"Port {port} is not available; choose another.") from None
+    port = listener.getsockname()[1]
+    token = secrets.token_urlsafe(24)
+    application = create_app(
+        SourceSift(settings),
+        token=token,
+        hosts=(f"127.0.0.1:{port}", f"localhost:{port}"),
+        files_=[str(path) for path in file or ()],
+        save=True if save else None,
+        resume=continue_,
+    )
+    url = f"http://127.0.0.1:{port}/#{token}"
+    # The link is the key to this launch: anyone who has it can use the session.
+    print(f"SourceSift is running at {url}\nPress Ctrl+C to stop.", flush=True)
+    if browser:
+        webbrowser.open(url)
+    uvicorn.Server(uvicorn.Config(application, log_level="warning")).run(
+        sockets=[listener]
+    )
+
+
+@app.command
 def chat(
     *,
     file: Annotated[list[Path] | None, Parameter(name=("--file", "-f"))] = None,

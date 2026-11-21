@@ -201,7 +201,8 @@ prototype while keeping the Python SDK, CLI, and TUI as the product:
 - [x] Add opt-in saved conversations with `--save` and `--continue`.
 
 - [x] Make live data sources typed Python definitions that can return data shapes, add widgets and a `show` tool, and return visuals as `Result.blocks` (step 1 of the [web app proposal](design.md#11-proposal-web-app-typed-data-and-display-blocks)).
-- [ ] Build `ssift web` to draw those visuals (step 2).
+- [x] Build `ssift web`: a local page with chat, citations, sources, and drawn visuals, plus model-free refresh of live data (step 2).
+- [ ] Add weather with a map view, then stock prices (steps 3 and 4).
 
 Open questions from this round:
 

@@ -364,7 +364,9 @@ and completion criteria belong in [roadmap.md](roadmap.md).
 
 ## 11. Proposal: Web App, Typed Data, and Display Blocks
 
-**Status: step 1 of the order of work is implemented** (typed sources, the
+**Status: steps 1 and 2 of the order of work are implemented.** Step 2 is the
+[web app](web.md); it differs from the route table below in small ways (a refresh
+route keyed by visual, and no file upload yet). **Step 1** (typed sources, the
 `TimeSeries`, `Table`, and `Stats` shapes, three widgets, the `show` tool, and
 `Result.blocks`; see [visuals](research.md#visuals) and the
 [SDK](sdk.md#data-sources-and-widgets)). `GeoPoints` and the `map` primitive wait

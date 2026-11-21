@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SourceSift</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="bar">
+  <h1>SourceSift</h1>
+  <span id="model" class="muted"></span>
+  <span class="grow"></span>
+  <button id="btn-sources" type="button">Sources</button>
+  <button id="btn-evidence" type="button">Evidence</button>
+  <button id="btn-report" type="button">Save report</button>
+  <button id="btn-new" type="button">New chat</button>
+</header>
+<div class="layout">
+  <main>
+    <div id="transcript" aria-live="polite">
+      <div id="empty" class="empty">
+        <h2>Ask a research question</h2>
+        <p class="muted">Answers cite the sources they were built from. Try one of these:</p>
+        <div class="suggestions">
+          <button type="button" class="suggestion">Chart the US national debt over the past year and show the headline figures.</button>
+          <button type="button" class="suggestion">Show me a table of the Hacker News front page.</button>
+          <button type="button" class="suggestion">What are today's top technology stories?</button>
+        </div>
+      </div>
+    </div>
+    <form id="composer">
+      <textarea id="prompt" rows="2" placeholder="Ask a research question…" aria-label="Your question"></textarea>
+      <button id="send" type="submit" class="primary">Send</button>
+    </form>
+    <p id="status" class="muted" role="status"></p>
+  </main>
+  <aside id="panel" hidden>
+    <div class="panel-head">
+      <h2 id="panel-title"></h2>
+      <button id="panel-close" type="button" aria-label="Close panel">Close</button>
+    </div>
+    <div id="panel-body"></div>
+  </aside>
+</div>
+<div id="tooltip" class="tooltip" hidden></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

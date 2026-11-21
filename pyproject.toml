@@ -33,6 +33,13 @@ dependencies = [
     "tzdata>=2026.1",
 ]
 
+[project.optional-dependencies]
+web = [
+    "markdown-it-py>=4,<5",
+    "starlette>=0.50,<2",
+    "uvicorn>=0.38,<1",
+]
+
 [project.scripts]
 ssift = "sourcesift.cli:main"
 
@@ -53,6 +60,7 @@ dev = [
   "hypothesis>=6.169,<7",
   "pytest-asyncio>=1.4.0",
   "httpx2>=2.13,<3",
+  "sourcesift[web]",
 ]
 docs = [
     "mkdocs>=1.6,<2",

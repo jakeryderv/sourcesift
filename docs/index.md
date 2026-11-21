@@ -10,6 +10,7 @@ sources covering US national and world news, technology, AI, science, health,
 business, marketing, finance, and US policy and government.
 See [research and sources](research.md) for the catalog, freshness rules, and limits.
 Interactive sessions are available through `ssift chat`; see the [chat guide](chat.md).
+`ssift web` opens the same chat as a local [web page](web.md) that draws charts and tables.
 Plugin discovery and richer recommendations remain later work.
 
 Start with the [CLI guide](cli.md), [Python SDK](sdk.md), and
