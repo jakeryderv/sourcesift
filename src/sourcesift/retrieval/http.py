@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import socket
 from dataclasses import dataclass
+from importlib.metadata import version
 from typing import Self
 from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
@@ -13,7 +14,9 @@ import httpx
 from sourcesift.core.config import Limits
 from sourcesift.retrieval.urls import RetrievalError, hostname, normalize_url
 
-USER_AGENT = "SourceSift/0.2 (+https://jakevanslyke.com/sourcesift/)"
+# Keep this a bare product token: some publisher CDNs stall requests whose
+# User-Agent contains a URL.
+USER_AGENT = f"SourceSift/{version('sourcesift')}"
 
 
 @dataclass(frozen=True)

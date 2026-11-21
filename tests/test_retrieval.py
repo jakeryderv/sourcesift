@@ -1,6 +1,7 @@
 """Deterministic parser/network fixtures: no publisher or model requests."""
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -334,6 +335,8 @@ async def test_dns_and_pinning(monkeypatch):
         observed.append(request)
         assert request.url.host == "93.184.216.34"
         assert request.headers["host"] == "example.com"
+        # A URL in the User-Agent makes some publisher CDNs stall the request.
+        assert re.fullmatch(r"SourceSift/[\w.+-]+", request.headers["user-agent"])
         assert request.extensions["sni_hostname"] == "example.com"
         if request.url.path == "/robots.txt":
             return httpx.Response(404)

@@ -209,6 +209,22 @@ async def test_turn_error_is_safe(session, monkeypatch, failure):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("debug", [False, True])
+async def test_provider_detail_only_with_debug(session, monkeypatch, debug):
+    async def fail(prompt, *, on_event):
+        raise ModelError("Summary.", detail='{"raw": ["bracketed [b] body"]}')
+
+    monkeypatch.setattr(session, "run", fail)
+    app = ChatApp(session, debug=debug)
+    async with app.run_test(size=(80, 24)) as pilot:
+        app.query_one("#prompt", TextArea).load_text("Research")
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        assert "Summary." in visible(app)
+        assert ("bracketed [b] body" in visible(app)) is debug
+
+
+@pytest.mark.asyncio
 async def test_commands_and_context_reload_failure(session, monkeypatch):
     app = ChatApp(session)
     async with app.run_test() as pilot:
