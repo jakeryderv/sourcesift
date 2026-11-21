@@ -204,6 +204,8 @@ prototype while keeping the Python SDK, CLI, and TUI as the product:
 - [x] Build `ssift web`: a local page with chat, citations, sources, and drawn visuals, plus model-free refresh of live data (step 2).
 - [x] Add a weather source and a map view with a radar layer (step 3).
 - [x] Draw visuals with Plotly from tables: one `chart` widget with six kinds, maps by Plotly, widgets that may return any Plotly figure, and no automatic refresh.
+- [x] Include visuals in reports: tables and figures as Markdown, and charts and maps as images when saved from the web app.
+- [ ] Export a report as PDF.
 - [ ] Add stock prices (step 4).
 
 Open questions from this round:

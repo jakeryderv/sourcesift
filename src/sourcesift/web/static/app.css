@@ -195,7 +195,7 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 .send .icon-stop { display: none; fill: currentColor; stroke: none; }
 .send.busy .icon-send { display: none; }
 .send.busy .icon-stop { display: block; }
-.toast { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); margin-bottom: 10px; background: var(--text-primary); color: var(--page); font-size: 13px; padding: 7px 14px; border-radius: 999px; max-width: 90%; overflow-wrap: anywhere; animation: rise .2s ease-out; }
+.toast { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); margin-bottom: 10px; background: var(--text-primary); color: var(--page); font-size: 13px; padding: 7px 14px; border-radius: 14px; max-width: 90%; overflow-wrap: anywhere; animation: rise .2s ease-out; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } .activity.working .activity-text { color: var(--text-secondary); background: none; } }
 

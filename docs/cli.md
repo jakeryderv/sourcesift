@@ -65,8 +65,8 @@ stderr with the usual exit codes, and stdout stays empty.
 
 ## Reports
 
-`--report` saves the request, answer, references, and notes as a Markdown file and
-prints its path to stderr, so stdout still carries only the answer:
+`--report` saves the request, answer, visuals, references, and notes as a Markdown
+file and prints its path to stderr, so stdout still carries only the answer:
 
 ```sh
 ssift ask "Check tech and AI this week" --report
@@ -74,8 +74,11 @@ ssift ask "Check tech and AI this week" --report
 
 Reports go to the [configured reports directory](configuration.md#reports). Each
 report is a new file named from the UTC time and the first words of the prompt;
-existing files are never replaced. SourceSift writes the file from the finished
-result. The model has no tool for writing or reading files.
+existing files are never replaced. Tables and headline figures are written into
+the report as Markdown. The terminal cannot draw a chart or map, so a report
+saved from here lists the rows the chart was drawn from instead; a report saved
+from the [web app](web.md) includes the chart as an image. SourceSift writes the
+file from the finished result. The model has no tool for writing or reading files.
 
 ## Exit codes and troubleshooting
 

@@ -1,5 +1,5 @@
 import { el, formatTime, formatValue } from "/dom.js";
-import { renderFigure } from "/figure.js";
+import { figureImage, renderFigure } from "/figure.js";
 
 const $ = (id) => document.getElementById(id);
 const transcript = $("transcript");
@@ -211,14 +211,18 @@ function renderArtifact(blocks) {
   head.append(el("strong", {}, names.join(" · ")));
   for (const id of [...new Set(blocks.flatMap((b) => b.evidence_ids))].slice(0, 4)) head.append(el("button", { type: "button", class: "cite", "data-cite": id }, id.slice(1)));
   card.append(head);
-  for (const block of [...blocks].sort((a, b) => rank(a.view) - rank(b.view))) {
+  // Where each figure was drawn, by its position in the result, for report images.
+  const figures = [];
+  const ordered = blocks.map((block, index) => ({ block, index })).sort((a, b) => rank(a.block.view) - rank(b.block.view));
+  for (const { block, index } of ordered) {
     const section = el("div", { class: "widget" });
     const body = el("div");
     section.append(el("h4", {}, block.view.title), body);
     card.append(section);
     drawView(body, block);
+    if (block.view.type === "figure") figures.push({ index, body });
   }
-  return card;
+  return { card, figures };
 }
 
 // ---- Turns -------------------------------------------------------------------
@@ -226,7 +230,8 @@ function renderArtifact(blocks) {
 function fillTurn(node, turn, index) {
   const result = turn.result;
   for (const ref of result.references) state.references.set(ref.id, ref);
-  if (result.blocks.length) node.append(renderArtifact(result.blocks));
+  const artifact = result.blocks.length ? renderArtifact(result.blocks) : null;
+  if (artifact) node.append(artifact.card);
   const answer = el("div", { class: "answer" });
   setAnswer(answer, turn.answer_html);
   node.append(answer);
@@ -253,10 +258,19 @@ function fillTurn(node, turn, index) {
   });
   const save = el("button", { type: "button", class: "ghost" }, "Save report");
   save.addEventListener("click", async () => {
+    save.disabled = true;
     try {
-      const data = await (await api(`/api/sessions/${state.session}/report`, { method: "POST", body: { turn: index } })).json();
-      toast(`Report saved to ${data.path}`);
+      // A picture of each chart and map, as it is drawn now, goes with the report.
+      const images = {};
+      for (const figure of artifact?.figures ?? []) {
+        const image = await figureImage(figure.body);
+        if (image) images[figure.index] = image;
+      }
+      const data = await (await api(`/api/sessions/${state.session}/report`, { method: "POST", body: { turn: index, images } })).json();
+      const count = data.images.length;
+      toast(`Report saved to ${data.path}${count ? ` with ${count} image${count === 1 ? "" : "s"}` : ""}`);
     } catch (error) { toast(error.message); }
+    save.disabled = false;
   });
   foot.append(copy, save);
   node.append(foot, meta);

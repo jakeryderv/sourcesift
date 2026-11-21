@@ -1,5 +1,6 @@
 """The local web server: access rules, streamed turns, sources, reports, radar."""
 
+import base64
 import json
 import sys
 from contextlib import asynccontextmanager
@@ -146,8 +147,29 @@ def test_turn_streams_progress_then_a_result_with_visuals(served):
     assert (
         client.post(f"{base}/report", json={"turn": 5}, headers=AUTH).status_code == 400
     )
-    saved = client.post(f"{base}/report", json={"turn": 0}, headers=AUTH).json()["path"]
-    assert "front page" in Path(saved).read_text(encoding="utf-8")
+    saved = client.post(f"{base}/report", json={"turn": 0}, headers=AUTH).json()
+    text = Path(saved["path"]).read_text(encoding="utf-8")
+    # The table the page showed is written into the report.
+    assert "front page" in text and "### Hacker News front page" in text
+    assert "| First | 10 | 2 |" in text and saved["images"] == []
+
+    # A picture is kept only for a chart or map; this answer's visual is a table.
+    picture = (
+        "data:image/png;base64,"
+        + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 1_500_000).decode()
+    )
+    sent = client.post(
+        f"{base}/report", json={"turn": 0, "images": {"0": picture}}, headers=AUTH
+    )
+    assert sent.status_code == 200 and sent.json()["images"] == []
+    for images in ({"0": "data:text/html;base64,PGI+"}, {"x": picture}, ["a"], "a"):
+        bad = client.post(
+            f"{base}/report", json={"turn": 0, "images": images}, headers=AUTH
+        )
+        assert bad.status_code == 400 and "images" in bad.json()["error"]
+    # Only saving a report may send that much.
+    large = client.post(f"{base}/turns", json={"prompt": picture}, headers=AUTH)
+    assert large.status_code == 403
 
 
 def test_sources_can_be_limited_for_one_conversation(served):
