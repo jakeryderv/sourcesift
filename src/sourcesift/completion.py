@@ -17,6 +17,7 @@ COMMANDS = {
     "/new": "Start fresh and reload context",
     "/context": "Inspect loaded personal context",
     "/model": "Choose model and reasoning effort",
+    "/report": "Save the latest answer as a Markdown report",
     "/cancel": "Stop the active research turn",
     "/help": "Show controls and commands",
     "/quit": "Exit chat",

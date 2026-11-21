@@ -67,6 +67,20 @@ cap applies to each model response. Input bytes are not model tokens: a model ma
 have a smaller context window. Context and retrieved evidence are sent to the
 selected model through OpenRouter. Local configuration does not mean offline inference.
 
+## Reports
+
+```toml
+[reports]
+directory = "reports" # relative to this TOML file; `~` expands
+```
+
+`ssift ask --report` and `/report` in chat save Markdown reports here. Without
+this setting they go to `reports/` in the platform's per-user `sourcesift` data
+directory: `$XDG_DATA_HOME/sourcesift/reports/` (normally
+`~/.local/share/sourcesift/reports/`) on Linux, `~/Library/Application
+Support/sourcesift/reports/` on macOS, and `%LOCALAPPDATA%\sourcesift\reports\` on
+Windows. The directory is created when the first report is saved.
+
 ## Sources and freshness
 
 ```toml

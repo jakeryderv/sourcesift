@@ -20,6 +20,7 @@ from sourcesift import (
     SourceSift,
     SourceSiftError,
     load_settings,
+    save_report,
 )
 from sourcesift.models import Result
 
@@ -69,6 +70,7 @@ def ask(
     | None = None,
     format: Literal["markdown", "plain"] = "markdown",
     json: bool = False,
+    report: bool = False,
     debug: bool = False,
 ) -> None:
     """Run a request with optional files and piped UTF-8 stdin.
@@ -81,6 +83,7 @@ def ask(
         reasoning_effort: Optional reasoning effort supported by the selected model.
         format: Answer format, Markdown by default.
         json: Print one JSON object with the answer, references, notes, and usage.
+        report: Also save a Markdown report in the reports directory.
         debug: On a model failure, also print the raw provider response to stderr.
     """
     overrides = {}
@@ -105,6 +108,10 @@ def ask(
         if json
         else render_result(result, format)
     )
+    if report:
+        path = save_report(request.prompt, result, settings.reports.directory)
+        # stderr keeps the path out of piped answers.
+        print(f"ssift: report saved to {path}", file=sys.stderr)
     sys.stdout.flush()
 
 
