@@ -199,8 +199,21 @@ class Api:
             raise InputError("Provide a nonempty prompt.")
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
+        draft: list[str] = []
+
         def on_event(event: SessionEvent) -> None:
-            queue.put_nowait({"event": event.kind, "text": event.text})
+            if event.kind == "draft":
+                # Send the whole draft rendered, so the page never parses Markdown.
+                draft.append(event.text)
+                html = render_markdown("".join(draft))
+                queue.put_nowait({"event": "draft", "html": html})
+            elif event.kind == "reset":
+                draft.clear()
+                queue.put_nowait({"event": "reset"})
+            elif event.kind == "step" and event.step is not None:
+                queue.put_nowait({"event": "step", "step": event.step.model_dump()})
+            else:
+                queue.put_nowait({"event": "status", "text": event.text})
 
         async def work() -> None:
             try:
@@ -245,7 +258,10 @@ class Api:
         session = self._session(request)
         if not session.turns:
             raise InputError("Nothing to save yet; ask a question first.")
-        prompt, result = session.turns[-1]
+        index = (await self._body(request)).get("turn", len(session.turns) - 1)
+        if not isinstance(index, int) or not 0 <= index < len(session.turns):
+            raise InputError("There is no such answer to save.")
+        prompt, result = session.turns[index]
         path = save_report(prompt, result, session.settings.reports.directory)
         return JSONResponse({"path": str(path)})
 

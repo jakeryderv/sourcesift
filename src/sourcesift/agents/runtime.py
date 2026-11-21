@@ -34,11 +34,17 @@ from pydantic_ai.models.openrouter import OpenRouterModel, OpenRouterModelSettin
 from pydantic_ai.providers.openrouter import OpenRouterProvider
 from pydantic_ai.usage import UsageLimits
 
+from sourcesift.agents.steps import (
+    call_arguments,
+    describe_call,
+    describe_result,
+    steps_from_messages,
+)
 from sourcesift.builtin import builtin_toolkit
 from sourcesift.core.config import Settings
 from sourcesift.errors import ConfigurationError, InputError, ModelError
 from sourcesift.extend import Toolkit
-from sourcesift.models import Evidence, Request, Result, SessionEvent, Usage
+from sourcesift.models import Evidence, Request, Result, SessionEvent, Step, Usage
 from sourcesift.retrieval.http import Fetcher, PageCache
 from sourcesift.retrieval.research import CITATION, Dataset, Research
 from sourcesift.sources import SourceRegistry
@@ -67,8 +73,11 @@ schema, never research. Its reply lists "showable" data. When the user asks to
 see, show, chart, plot, or tabulate data, or a visual clearly helps, call
 show(evidence_id, widget, options) with a widget from the payload's widgets that
 accepts that data. The application draws it from the retrieved data; you cannot
-pass values. Still state the key figures in the answer and cite that evidence, or
-the visual is omitted. Never claim a visual is shown unless show succeeded.
+pass values. Visuals appear above your answer, so when you show any, write only a
+brief summary of two to four sentences with the key figures, and cite that
+evidence or the visual is omitted. Do not repeat a visual's contents as a
+Markdown table or list, and do not describe where visuals appear. Never claim a
+visual is shown unless show succeeded.
 After research, read_article can retrieve details from returned links. Use it when
 feed summaries cannot support the requested detail. Retrieval is bounded; stop
 when evidence is sufficient. Do not repeatedly call tools that failed.
@@ -277,6 +286,9 @@ async def run_agent(
     ):
         raise InputError("Session context limit reached; start a new session (/new).")
 
+    running: dict[str, Step] = {}
+    reported: set[str] = set()
+
     async def stream_events(
         _: RunContext[object], events: AsyncIterable[AgentStreamEvent]
     ) -> None:
@@ -291,11 +303,32 @@ async def run_agent(
             ):
                 on_event(SessionEvent(kind="draft", text=event.delta.content_delta))
             elif isinstance(event, FunctionToolCallEvent):
-                on_event(
-                    SessionEvent(kind="status", text=f"Running {event.part.tool_name}…")
+                part = event.part
+                title, lines = describe_call(
+                    part.tool_name, call_arguments(part), registry
                 )
+                step = running[part.tool_call_id] = Step(
+                    id=part.tool_call_id,
+                    tool=part.tool_name,
+                    state="running",
+                    title=title,
+                    lines=lines,
+                )
+                on_event(SessionEvent(kind="step", text=f"{title}…", step=step))
             elif isinstance(event, FunctionToolResultEvent):
-                on_event(SessionEvent(kind="status", text="Reviewing evidence…"))
+                started = running.pop(event.part.tool_call_id, None)
+                if started is not None:
+                    state, summary, lines = describe_result(
+                        started.tool, event.part.content, reported
+                    )
+                    step = started.model_copy(
+                        update={
+                            "state": state,
+                            "summary": summary,
+                            "lines": (*started.lines, *lines),
+                        }
+                    )
+                    on_event(SessionEvent(kind="step", text="Thinking…", step=step))
 
     try:
         async with asyncio.timeout(settings.limits.timeout_seconds):
@@ -411,6 +444,7 @@ async def run_agent(
         model=settings.agent.model or "",
         references=research.references(answer),
         blocks=blocks,
+        steps=steps_from_messages(response.new_messages(), registry),
         selected_sources=tuple(research.selected),
         window=research.window,
         http_requests=fetcher.requests,

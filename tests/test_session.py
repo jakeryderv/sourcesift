@@ -289,8 +289,15 @@ async def test_streamed_drafts_repaired_and_tool_progress(settings, install):
     result = await session.run("Check unknown publication", on_event=events.append)
     assert any(e.kind == "draft" and "S999" in e.text for e in events)
     assert sum(e.kind == "reset" for e in events) >= 3
-    assert any("Running research" in e.text for e in events)
-    assert any("Reviewing" in e.text for e in events)
+    steps = [e.step for e in events if e.kind == "step" and e.step is not None]
+    assert [s.state for s in steps] == ["running", "failed"]
+    assert steps[0].title == "Looking for sources" and steps[0].tool == "research"
+    assert steps[1].summary == "Nothing new" and steps[1].id == steps[0].id
+    assert any(
+        line.startswith("Limited to: Unknown publication") for line in steps[1].lines
+    )
+    assert result.steps == (steps[1],)
+    assert any(e.kind == "step" and e.text == "Thinking…" for e in events)
     assert "could not retrieve" in result.answer
     assert "S999" not in session.turns[0][1].answer
 

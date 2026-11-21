@@ -113,6 +113,20 @@ def test_turn_streams_progress_then_a_result_with_visuals(served):
     )
     kinds = [event["event"] for event in stream]
     assert kinds[0] == "status" and kinds[-1] == "result" and "draft" in kinds
+    # Each tool call is reported when it starts and when it finishes.
+    steps = [event["step"] for event in stream if event["event"] == "step"]
+    assert [(s["tool"], s["state"]) for s in steps] == [
+        ("query_source", "running"),
+        ("query_source", "done"),
+        ("show", "running"),
+        ("show", "done"),
+    ]
+    assert steps[0]["title"] == "Getting data from Hacker News"
+    assert steps[1]["summary"] == "2 new items" and "[S1] First" in steps[1]["lines"]
+    assert steps[3]["summary"] == "Hacker News front page"
+    # Drafts arrive already rendered, growing as the model writes.
+    drafts = [event["html"] for event in stream if event["event"] == "draft"]
+    assert "<strong>First</strong>" in drafts[0] and len(drafts[-1]) > len(drafts[0])
     turn = stream[-1]["turn"]
     assert turn["prompt"] == "front page"
     (block,) = turn["result"]["blocks"]
@@ -127,7 +141,11 @@ def test_turn_streams_progress_then_a_result_with_visuals(served):
     # The conversation survives a page reload and can be saved as a report.
     again = client.get(base, headers=AUTH).json()
     assert again["id"] == session["id"] and len(again["turns"]) == 1
-    saved = client.post(f"{base}/report", json={}, headers=AUTH).json()["path"]
+    assert [s["state"] for s in turn["result"]["steps"]] == ["done", "done"]
+    assert (
+        client.post(f"{base}/report", json={"turn": 5}, headers=AUTH).status_code == 400
+    )
+    saved = client.post(f"{base}/report", json={"turn": 0}, headers=AUTH).json()["path"]
     assert "front page" in Path(saved).read_text(encoding="utf-8")
 
     # Refresh redraws from the source without the model, at most once per interval.

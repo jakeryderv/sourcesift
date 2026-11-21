@@ -24,20 +24,30 @@ The page opens in your default browser. The server stops with Ctrl+C.
 
 ## What the page does
 
-- **Chat.** Answers stream in as drafts and are replaced by the checked result.
-  Enter sends; Shift+Enter adds a line; Send becomes Stop while a turn runs.
-- **Citations.** Each `[S1]` is a button that opens the Evidence panel at that
-  reference, with its publisher, kind, dates, and any limitations.
-- **Visuals.** When the model shows data with a [widget](research.md#visuals), the
-  page draws it under the answer: a line chart with a hover and keyboard readout
-  and a table of the same values, a table, headline figures, or a map you can
-  drag and zoom, optionally under live precipitation radar. Every visual names
-  the evidence it was drawn from.
-- **Live data.** A visual from a source that updates (weather, the Hacker News table) is
-  marked Live and re-fetched on that source's interval while the page is visible.
-  This asks the source directly; the model is not called and no tokens are spent.
+- **Chat.** Enter sends; Shift+Enter adds a line; the send button becomes Stop
+  while a turn runs. Clicking a suggestion sends it.
+- **Activity.** While the agent works, the turn shows what it is doing, one step
+  per lookup ("Getting data from Weather", "Checking NPR, BBC News", "Drawing a
+  map"). Each step expands to show its parameters and what came back. When the
+  answer arrives the list folds into one line, such as "3 steps · 10s", that you
+  can reopen.
+- **Visuals.** Everything the model chose to [show](research.md#visuals) is
+  grouped in one card above the answer: headline figures, then a map you can drag
+  and zoom (optionally under live precipitation radar), a line chart with a hover
+  and keyboard readout and a table of the same values, and tables. The card names
+  the source and the evidence the visuals were drawn from.
+- **Answer.** Below the card is a brief summary. When visuals are shown, the
+  model is told not to repeat them as Markdown tables or lists.
+- **Citations.** Each numbered chip opens the Evidence panel at that reference,
+  with its publisher, kind, dates, and any limitations. The line under an answer
+  ("2 sources · 1 note") expands to the same references and the answer's notes.
+- **Live data.** A card from a source that updates (weather, the Hacker News
+  table) is marked Live and re-fetched on that source's interval while the page is
+  visible. This asks the source directly; the model is not called and no tokens
+  are spent. A map keeps the position you left it in.
 - **Sources.** Browse the catalog and choose which sources this chat may use.
-- **Save report.** Writes the latest answer as a Markdown [report](cli.md).
+- **Copy and Save report** under each answer; a report is a Markdown
+  [file](cli.md).
 - **New chat.** Starts a conversation with every source enabled.
 
 Reloading the page keeps the conversation while the server is running.
