@@ -6,8 +6,8 @@ metadata, and optional user context, then return answers with evidence reference
 
 **Phases 1–3 are implemented:** interactive terminal conversations, supplied-text analysis, semantic source
 selection, RSS/Atom retrieval, feed discovery, and bounded article extraction.
-The initial eight-source collection covers US national news, technology, AI,
-business, marketing, and finance. Sources and dates are explicit; missing evidence
+The built-in catalog of 28 sources covers US national and world news, technology,
+AI, science, health, business, marketing, finance, and US policy and government. Sources and dates are explicit; missing evidence
 and access failures are disclosed. The SDK is an early API and may evolve before 1.0.
 
 ## Project Documentation

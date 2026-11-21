@@ -4,11 +4,12 @@ Ask naturally: “check news,” “check tech and AI,” or “find development
 this project.” The model selects sources from their descriptions and your context.
 There is no keyword router, category flag, search engine, or persistent history.
 
-## Initial catalog
+## Built-in catalog
 
-The initial general-news scope is US national news. Individual feeds also contain
-international stories; their presence does not establish comprehensive global or
-local coverage. The catalog is deliberately small and can miss relevant reporting.
+A plain “check news” means US national news (NPR and PBS). World news, science and
+health, technology, and US policy and government each have their own sources below;
+ask for them by topic or by publication. The catalog is a curated sample, not
+comprehensive coverage, and can miss relevant reporting. Local news is not covered.
 
 | ID | Publication | Coverage | Feed |
 |---|---|---|---|
@@ -20,6 +21,30 @@ local coverage. The catalog is deliberately small and can miss relevant reportin
 | `marketing-dive` | Marketing Dive | Advertising, brands, campaigns, marketing platforms | [RSS](https://www.marketingdive.com/feeds/news/) |
 | `federal-reserve` | Federal Reserve | Primary US monetary-policy and banking announcements | [RSS](https://www.federalreserve.gov/feeds/press_all.xml) |
 | `cnbc` | CNBC | Business, companies, markets, economics | [RSS](https://www.cnbc.com/id/100003114/device/rss/rss.html) |
+| `bbc-news` | BBC News | World news from the UK public broadcaster | [RSS](https://feeds.bbci.co.uk/news/world/rss.xml) |
+| `the-guardian` | The Guardian | International news and analysis | [RSS](https://www.theguardian.com/world/rss) |
+| `dw` | Deutsche Welle | English-language international news from Germany's public broadcaster, strong on Europe, Africa, and Asia | [RSS](https://rss.dw.com/rdf/rss-en-all) |
+| `al-jazeera` | Al Jazeera | International news with strong Middle East, Africa, and Global South coverage | [RSS](https://www.aljazeera.com/xml/rss/all.xml) (summaries only) |
+| `sciencedaily` | ScienceDaily | Summaries of new research across science, health, environment, and technology, based on university and journal press releases rather than independent reporting | [RSS](https://www.sciencedaily.com/rss/all.xml) |
+| `quanta-magazine` | Quanta Magazine | In-depth explanatory journalism on mathematics, physics, biology, and computer science research | [RSS](https://www.quantamagazine.org/feed/) |
+| `nasa` | NASA | Official NASA news releases on missions, launches, space science, and agency announcements | [RSS](https://www.nasa.gov/news-release/feed/) |
+| `stat-news` | STAT | Health, medicine, biotech, and pharmaceutical industry reporting | [RSS](https://www.statnews.com/feed/) |
+| `kff-health-news` | KFF Health News | US health policy, insurance, public health, and healthcare costs from a nonprofit newsroom | [RSS](https://kffhealthnews.org/feed/) |
+| `the-verge` | The Verge | Consumer technology, gadgets, platforms, and the technology industry, with product news and reviews | [RSS](https://www.theverge.com/rss/index.xml) |
+| `wired` | WIRED | Technology and its effects on culture, business, security, and science, including longer features | [RSS](https://www.wired.com/feed/rss) |
+| `github-blog` | GitHub Blog | Official GitHub posts on developer tools, product changes, open source, and software security | [RSS](https://github.blog/feed/) |
+| `lwn` | LWN.net | Linux kernel, free software, and open-source community news for a technical audience | [RSS](https://lwn.net/headlines/rss) (summaries only) |
+| `politico` | Politico | US politics, Congress, the White House, and campaigns | [RSS](https://rss.politico.com/politics-news.xml) (summaries only) |
+| `the-hill` | The Hill | US congressional, administration, and campaign news with frequent short updates | [RSS](https://thehill.com/homenews/feed/) |
+| `propublica` | ProPublica | Nonprofit investigative journalism on US government, business, justice, and public-interest accountability | [RSS](https://www.propublica.org/feeds/propublica/main) |
+| `scotusblog` | SCOTUSblog | US Supreme Court cases, opinions, arguments, and analysis | [RSS](https://www.scotusblog.com/feed/) |
+| `sec` | SEC | Official US Securities and Exchange Commission press releases on enforcement actions, rules, and agency announcements | [RSS](https://www.sec.gov/news/pressreleases.rss) |
+| `gao` | GAO | US Government Accountability Office reports and testimony auditing federal programs and spending | [RSS](https://www.gao.gov/rss/reports.xml) |
+| `justice-department` | US Department of Justice | Official US Department of Justice press releases on prosecutions, settlements, and enforcement | [RSS](https://www.justice.gov/news/rss?m=1) |
+
+Sources marked “summaries only” refuse automated article retrieval (through
+robots rules or by blocking the request), so answers can cite their feed summaries
+but `read_article` and `/read` cannot fetch the full text.
 
 Feeds are public recent-entry sources, not historical archives. A reachable feed
 does not imply that every linked article is accessible; subscriptions, robots

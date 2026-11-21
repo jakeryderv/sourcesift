@@ -208,7 +208,13 @@ def test_normalization_idempotent(query):
 
 def test_registry_settings_and_sdk_registration(tmp_path):
     registry = SourceRegistry(BUILTIN_SOURCES)
-    assert len(registry.list()) == 8
+    assert len(registry.list()) == 28
+    # Publishers that refuse article retrieval are registered as summaries only.
+    assert {s.id for s in registry.list() if "article" not in s.capabilities} == {
+        "al-jazeera",
+        "lwn",
+        "politico",
+    }
     resolved = registry.resolve("  PBS NEWS HOUR ")
     assert resolved is not None and resolved.id == "pbs"
     assert registry.resolve("missing") is None
