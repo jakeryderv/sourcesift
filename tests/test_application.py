@@ -78,6 +78,7 @@ def test_sync_async_context_and_usage(settings, install_model, tmp_path):
         assert "no retrieval" in info.instructions
         assert {tool.name for tool in info.function_tools} == {
             "research",
+            "query_source",
             "read_article",
         }
 

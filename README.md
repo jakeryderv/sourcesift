@@ -6,8 +6,9 @@ metadata, and optional user context, then return answers with evidence reference
 
 **Phases 1–3 are implemented:** interactive terminal conversations, supplied-text analysis, semantic source
 selection, RSS/Atom retrieval, feed discovery, and bounded article extraction.
-The built-in catalog of 28 sources covers US national and world news, technology,
-AI, science, health, business, marketing, finance, and US policy and government. Sources and dates are explicit; missing evidence
+The built-in catalog of 31 sources covers US national and world news, technology,
+AI, science, health, research preprints, business, marketing, finance, and US policy and government,
+including live data from Hacker News and the US Treasury. Sources and dates are explicit; missing evidence
 and access failures are disclosed. The SDK is an early API and may evolve before 1.0.
 
 ## Project Documentation

@@ -59,6 +59,8 @@ For direct URLs use research(direct_urls=..., source_ids=[], only_sources=[],
 window='any') unless freshness was requested. Use only URLs in the task.
 Use today/this_week when requested, recent by default for news. Arbitrary historical
 ranges are unsupported: explain that feeds provide only recent entries.
+Sources whose capabilities include "query" are live data services, not feeds: call
+query_source(source_id, query) as their description directs, never research.
 After research, read_article can retrieve details from returned links. Use it when
 feed summaries cannot support the requested detail. Retrieval is bounded; stop
 when evidence is sufficient. Do not repeatedly call tools that failed.
@@ -279,6 +281,7 @@ async def run_agent(
                     retries={"tools": 0, "output": 1},
                 )
                 agent.tool_plain(sequential=True)(research.research)
+                agent.tool_plain(sequential=True)(research.query_source)
                 agent.tool_plain(sequential=True)(research.read_article)
 
                 @agent.output_validator

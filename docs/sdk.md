@@ -84,6 +84,9 @@ Register before starting requests. Definitions are immutable; registration repla
 the application's registry for future runs. IDs, names, and aliases must be unique.
 An omitted feed enables discovery of declared RSS/Atom links from `website`.
 `capabilities=("feed",)` disables article follow-ups through that source.
+A [live data source](research.md#live-data-sources) sets `api` to a built-in
+adapter name with `capabilities=("query",)` and no feeds; new adapters are code,
+not configuration.
 Additions and disabled IDs can also be configured in TOML. Executable plugin
 registration/discovery remains Phase 5.
 
