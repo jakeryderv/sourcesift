@@ -358,6 +358,150 @@ streaming and cancellation. Rust native modules should follow measured bottlenec
 remain behind Python interfaces, and include a platform-wheel distribution plan.
 
 Email integrations, general crawling, browser automation, semantic/vector search,
-complex multi-agent orchestration, hosted services, and a web application remain
-deferred. Product scope is maintained in [use-cases.md](use-cases.md); sequencing
+complex multi-agent orchestration, and hosted services remain deferred. A local
+web application is proposed in [section 11](#11-proposal-web-app-typed-data-and-display-blocks). Product scope is maintained in [use-cases.md](use-cases.md); sequencing
 and completion criteria belong in [roadmap.md](roadmap.md).
+
+## 11. Proposal: Web App, Typed Data, and Display Blocks
+
+**Status: proposed, not implemented.** This section is a draft for discussion. It
+would make a local web app the main interface, keep `ssift ask`, retire the Textual
+chat once the web app covers the same ground, and turn the SDK into the way
+SourceSift is extended.
+
+### Goals
+
+- Answer requests such as “show me the weather in Chicago” or “show the national
+  debt this year” with a live visual next to the cited answer.
+- Keep every number on screen traceable to retrieved evidence.
+- Let new data sources be added without touching the agent loop, and later by
+  third-party packages.
+
+Not goals: a hosted service, a general dashboard builder, or letting the model
+write code or markup that the page runs.
+
+### Three additions
+
+```text
+Typed data source ──► evidence (text the model reads and cites)
+                 └──► display blocks (data the page draws)
+                 └──► refresh recipe (how the page re-fetches, without the model)
+```
+
+**1. Typed data sources.** Today an API source takes a free-text query. A data
+source instead declares its parameters as a model and returns structured results:
+
+```python
+class WeatherParams(Contract):
+    place: str = Field(min_length=1, max_length=80)
+    days: int = Field(default=3, ge=1, le=7)
+
+
+class DataResult(Contract):
+    evidence: tuple[ParsedItem, ...]        # text for the model, cited as [S1]
+    blocks: tuple[DisplayBlock, ...] = ()   # optional visuals built from the same data
+    refresh_seconds: int | None = None      # how often a client may re-fetch; None = static
+
+
+class DataSource(Protocol):
+    source: Source                          # catalog entry: id, name, description
+    params: type[Contract]                  # validated before any request is made
+
+    async def fetch(self, params: Contract, context: FetchContext) -> DataResult: ...
+```
+
+`FetchContext` supplies the bounded `get(url)`, the clock, and the date window, so
+a data source cannot reach the network any other way. The model keeps using one
+tool, `query_source(source_id, params)`; the catalog it sees includes each
+source's parameter schema, and invalid parameters come back as a note it can
+correct. The existing Hacker News and Treasury adapters become data sources.
+
+**2. Display blocks.** A small fixed set of shapes the page knows how to draw:
+
+| Block | Holds | Example |
+|---|---|---|
+| `chart` | One or more named series over time or categories, with a unit | Debt over the last year; a stock's day |
+| `map` | A center, zoom, markers, and an optional overlay from an allowlist | Forecast location with a radar layer |
+| `table` | Columns and rows | Exchange rates |
+| `stat` | A few labeled values with optional change | Current temperature, high, low |
+
+Every block carries the citation ID of the evidence it was built from. Blocks are
+created only by data sources, never by the model: the model decides *whether* a
+visual appears by citing that evidence, and `Result.blocks` lists the blocks whose
+evidence the answer cites, exactly as `Result.references` does for references.
+The model therefore cannot put an invented number into a chart.
+
+**3. Refresh without the model.** A block from a source with `refresh_seconds`
+can be re-fetched by the page on a timer through `app.fetch_data(source_id,
+params)`. That call runs the data source directly: same parameters, same bounded
+fetcher, no model request and no token cost. The server enforces the interval.
+
+### The web app
+
+`ssift web` starts a server on the loopback address and opens the page. The server
+is a thin layer over the existing `Session`:
+
+| Route | Purpose |
+|---|---|
+| `POST /api/sessions` | Start or continue a conversation |
+| `POST /api/sessions/{id}/turns` | Run a turn; streams status, draft, then the final result |
+| `GET` / `PUT /api/sessions/{id}/sources` | The catalog and which sources are enabled |
+| `POST /api/data/{source_id}` | Refresh a block's data without the model |
+| `POST /api/sessions/{id}/report` | Save the latest answer as a report |
+
+- The page is static files shipped in the package: chat, citations with an evidence
+  side panel, the source picker, and renderers for the four blocks. Chart and map
+  libraries are bundled rather than loaded from a CDN.
+- It is installed as an optional extra (`sourcesift[web]`) so the CLI stays light.
+- Because a local server can be reached by any page in the browser, it binds to
+  loopback only, requires a per-launch token, and checks the request origin. Files
+  are attached by upload; the page never sends a path for the server to read.
+
+### Extension interface
+
+The SDK's job becomes extending SourceSift. The first extension point is the data
+source above; feed sources are already data-only definitions. Built-in data
+sources are registered through the same call a package would use:
+
+```python
+app.register_data_source(WeatherSource())
+```
+
+Package discovery through the `sourcesift.plugins` entry point (section 4) is
+turned on only after at least three built-in data sources have been written
+against this interface without changing it. Until then the interface is
+documented as unstable.
+
+Deliberately not pluggable: the agent loop, the fetcher and its network rules, and
+citation checking. Widgets are not pluggable at first either: a plugin picks from
+the four blocks and ships no browser code. Installed plugins are trusted Python
+running in the application process, so the guarantee that the model has no file or
+shell access describes the built-ins, not arbitrary plugins.
+
+### Order of work
+
+1. `DataSource`, `DataResult`, display blocks, and `Result.blocks` in the core;
+   port Hacker News and Treasury. `ssift ask --json` gains `blocks`.
+2. `ssift web` with chat, citations, sources, and the `chart` block, shown with
+   Treasury debt over time (no API key, no open access question).
+3. A second widget: weather with `stat` and `map`. This is the test of whether
+   the interface is right.
+4. Stock prices with a live `chart`.
+5. Turn on plugin discovery and rewrite the SDK guide around extension.
+6. Remove the Textual chat.
+
+### Open questions
+
+- **Robots and public APIs.** Open-Meteo and the US National Weather Service
+  disallow all agents on their API hosts. Step 3 needs a decision on exempting
+  built-in data sources from the robots check.
+- **Stock data.** Free quotes generally require an API key and have usage terms.
+  Step 4 needs a provider chosen and a place for user-supplied keys in settings.
+- **One tool or one per source.** A single `query_source` keeps the tool list
+  fixed; a tool per data source gives the model a native schema for each. The
+  proposal picks the single tool and should be revisited if models misuse it.
+- **Placement.** Blocks are listed after the answer, like references. Letting the
+  model place a block inside its prose is possible later with a marker that names
+  a citation ID.
+- **Saved conversations.** Whether blocks are stored with a saved conversation
+  or rebuilt on reopen.
