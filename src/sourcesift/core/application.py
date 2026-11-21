@@ -8,12 +8,14 @@ from typing import BinaryIO
 from pydantic import ValidationError
 
 from sourcesift.agents.runtime import run_agent, validate_model_access
+from sourcesift.builtin import BUILTIN_CATALOG, builtin_toolkit
 from sourcesift.core.config import Settings, load_settings
 from sourcesift.core.context import prepare_request
 from sourcesift.core.session import Session
 from sourcesift.errors import ConfigurationError, InputError
+from sourcesift.extend import DataSource, Toolkit, Widget
 from sourcesift.models import Request, Result
-from sourcesift.sources import BUILTIN_SOURCES, Source, SourceRegistry
+from sourcesift.sources import Source, SourceRegistry
 
 
 class SourceSift:
@@ -45,7 +47,12 @@ class SourceSift:
             )
         )
 
-        catalog = SourceRegistry((*BUILTIN_SOURCES, *self.settings.sources.custom))
+        self.toolkit = builtin_toolkit()
+        if any("query" in s.capabilities for s in self.settings.sources.custom):
+            raise ConfigurationError(
+                "A live data source is defined in Python, not in configuration."
+            )
+        catalog = SourceRegistry((*BUILTIN_CATALOG, *self.settings.sources.custom))
         disabled = set(self.settings.sources.disabled)
         if disabled - {source.id for source in catalog.list()}:
             raise ConfigurationError("Disabled source IDs must exist in the catalog.")
@@ -57,9 +64,26 @@ class SourceSift:
         """Add a definition for future runs; duplicate identities are rejected.
 
         Call before starting requests. Each run snapshots the immutable registry.
-        Third-party executable plugins are a later capability.
+        A live data source is registered with ``register`` instead.
         """
+        if "query" in source.capabilities:
+            raise ConfigurationError("Register a live data source with register().")
         self.registry = SourceRegistry((*self.registry.list(), source))
+
+    def register(self, item: DataSource | Widget) -> None:
+        """Add a data source or widget defined with ``sourcesift.extend``.
+
+        Call before starting requests. This interface is new and may change.
+        Extensions are trusted Python running in this process.
+        """
+        sources = list(self.toolkit.sources.values())
+        widgets = list(self.toolkit.widgets.values())
+        if isinstance(item, DataSource):
+            registry = SourceRegistry((*self.registry.list(), item.source))
+            self.toolkit = Toolkit([*sources, item], widgets)
+            self.registry = registry
+        else:
+            self.toolkit = Toolkit(sources, [*widgets, item])
 
     def session(
         self,
@@ -76,6 +100,7 @@ class SourceSift:
         return Session(
             self.settings,
             self.registry,
+            toolkit=self.toolkit,
             files=files,
             save=self.settings.sessions.save if save is None else save,
             resume=resume,
@@ -99,7 +124,9 @@ class SourceSift:
             raise InputError("Provide a nonempty prompt.") from None
         validate_model_access(self.settings)
         prepared = prepare_request(parsed, self.settings, files=files, stdin=stdin)
-        return await run_agent(prepared, self.settings, self.registry)
+        return await run_agent(
+            prepared, self.settings, self.registry, toolkit=self.toolkit
+        )
 
     def run_sync(
         self,

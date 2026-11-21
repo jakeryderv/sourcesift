@@ -56,22 +56,49 @@ and [SDK registration](sdk.md#source-definitions).
 
 ## Live data sources
 
-Some sources answer a short query with current data instead of offering a feed.
-The model reaches them through the `query_source` tool, and their records are
-cited like any other evidence, with the kind `api record`.
+Some sources answer with current data instead of offering a feed. The model
+reaches them through the `query_source` tool with typed parameters, and their
+records are cited like any other evidence, with the kind `api record`.
 
-| ID | Source | A query is | Returns |
+| ID | Parameters | Evidence | Data for visuals |
 |---|---|---|---|
-| `hacker-news` | Hacker News | Empty for the current front page, or a few keywords | Story titles, points, comment counts, and submitted links; keyword results are limited to the date window |
-| `us-treasury` | US Treasury Fiscal Data | Exactly `debt`, `interest-rates`, or `exchange-rates` | The latest published figures for that dataset, with its record date |
+| `hacker-news` | `query`: keywords, or empty for the current front page | Story titles, points, comment counts, and submitted links; keyword results are limited to the date window | A table of the stories |
+| `us-treasury` | `dataset`: `debt`, `interest-rates`, or `exchange-rates`; `days` of history for `debt` (7 to 3650, default 30) | The latest published figures with their record date; for `debt`, also the range of the history retrieved | `debt`: a time series and headline figures. Others: a table |
 
-Each of these is a built-in adapter that requests only its own documented
-endpoints. The model supplies the query text, which is sent as a URL-encoded
-parameter; it cannot choose a host or path. Requests use the same bounded HTTP
-adapter as feeds, so address checks, robots rules, byte limits, and the request
-budget all apply. Hacker News points and comments measure attention, not accuracy.
-A Treasury record date is a reporting period rather than a publication time, so
-those records are not filtered by the date window.
+Each is defined in Python with a parameter model. Parameters are validated before
+any request is made; invalid ones are returned to the model to correct. A source
+requests only its own documented endpoints, so the model cannot choose a host or
+path. Requests use the same bounded HTTP adapter as feeds, so address checks,
+robots rules, byte limits, and the request budget all apply. Hacker News points
+and comments measure attention, not accuracy. A Treasury record date is a
+reporting period rather than a publication time, so those records are not
+filtered by the date window.
+
+## Visuals
+
+A live data source can return its data as typed shapes (a time series, a table,
+headline figures) alongside the text the model reads. The model may then call the
+`show` tool to pick a widget for that data:
+
+| Widget | Accepts | Options |
+|---|---|---|
+| `line-chart` | Time series | `title`, `log_scale` |
+| `table` | Table | `title`, `max_rows` |
+| `stats` | Headline figures | `title` |
+
+- The model chooses the widget and its options. It cannot pass values: the
+  application builds the visual from what the source returned, so a number on
+  screen always comes from retrieved data.
+- A visual is kept only when the answer cites its evidence. Otherwise it is
+  dropped and a note says so.
+- `limits.max_blocks` (default 4) bounds visuals per answer.
+- In a conversation, a follow-up can show data retrieved in an earlier turn
+  without another request. That data is held in memory and is not written to a
+  saved conversation.
+
+Visuals are returned as `Result.blocks` and in `--json` output. The terminal only
+lists them by widget and title; drawing them is the job of the planned
+[web app](design.md#11-proposal-web-app-typed-data-and-display-blocks).
 
 arXiv, Open-Meteo, and the US National Weather Service publish APIs whose hosts
 disallow all automated agents in `robots.txt`. SourceSift honors that, so there is

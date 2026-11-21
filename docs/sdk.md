@@ -84,11 +84,85 @@ Register before starting requests. Definitions are immutable; registration repla
 the application's registry for future runs. IDs, names, and aliases must be unique.
 An omitted feed enables discovery of declared RSS/Atom links from `website`.
 `capabilities=("feed",)` disables article follow-ups through that source.
-A [live data source](research.md#live-data-sources) sets `api` to a built-in
-adapter name with `capabilities=("query",)` and no feeds; new adapters are code,
-not configuration.
-Additions and disabled IDs can also be configured in TOML. Executable plugin
-registration/discovery remains Phase 5.
+Additions and disabled IDs can also be configured in TOML. A
+[live data source](research.md#live-data-sources) is code, not configuration; see
+below.
+
+## Data sources and widgets
+
+!!! warning "New interface"
+    `sourcesift.extend` is new and may change before it is opened to installed
+    plugins. Extensions are trusted Python running in your process: unlike the
+    model, they can do anything your program can.
+
+A data source is an async function with typed parameters. It returns evidence for
+the model to cite and, optionally, the same data as shapes (`TimeSeries`, `Table`,
+`Stats`). A widget is a function from one shape and typed options to a view
+(`Chart`, `TableView`, `StatView`). Neither refers to the other, so any widget can
+show any source's data of the shape it accepts.
+
+```python
+from pydantic import BaseModel, Field
+from sourcesift import (
+    Record,
+    SourceResult,
+    SourceSift,
+    Stats,
+    StatView,
+    source,
+    widget,
+)
+
+
+class RepoParams(BaseModel):
+    repo: str = Field(pattern=r"^[\w.-]+/[\w.-]+$", description="owner/name")
+
+
+@source(
+    id="repo-stats",
+    name="Repository stats",
+    website="https://example.com/",
+    description="Open issue and pull request counts for one repository.",
+    params=RepoParams,
+    returns=(Stats,),
+    refresh_seconds=300,
+)
+async def repo_stats(params, context):
+    page = await context.get(f"https://example.com/api/{params.repo}")
+    counts = parse(page.body)  # your parsing
+    figures = Stats(
+        name=params.repo,
+        items=[{"label": "Open issues", "value": counts.issues}],
+    )
+    text = f"{params.repo} has {counts.issues} open issues."
+    return SourceResult([Record(params.repo, page.url, text, page)], [figures])
+
+
+@widget(id="headline", description="The first figure, large.", accepts=Stats)
+def headline(data, options):
+    return StatView(title=data.name, items=data.items[:1])
+
+
+app = SourceSift()
+app.register(repo_stats)
+app.register(headline)
+result = app.run_sync("How many open issues does example/project have? Show it.")
+for block in result.blocks:
+    print(block.widget, block.view.title, block.evidence_ids)
+```
+
+- `context.get(url)` is the only network access a source is given. It applies the
+  same address checks, robots rules, size limits, and request budget as feeds.
+  `context.now`, `context.since`, and `context.limit` carry the clock, the start of
+  the date window, and the per-source item limit.
+- Field descriptions on the parameter and option models are what the model sees.
+- Raise `sourcesift.retrieval.urls.RetrievalError` for a failure the user should
+  see as a note.
+- A `Block` records the source ID and parameters, so an interface can fetch the
+  same data again later; `refresh_seconds` says how often it may.
+
+Loading extension files from configuration and discovering installed plugins are
+planned; see the [design](design.md#11-proposal-web-app-typed-data-and-display-blocks).
 
 Catch `ConfigurationError` or `InputError` to correct local input, and `ModelError`
 for timeout, provider, or unusable-output failures. All derive from

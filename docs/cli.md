@@ -28,7 +28,7 @@ For a development checkout, prefix commands with `uv run --locked`.
 | `--reasoning-effort` | Optional model-supported reasoning effort |
 | `--format markdown` | Markdown answer, the default |
 | `--format plain` | Plain-text answer without terminal styling |
-| `--json` | One JSON object: answer, references, notes, usage, and retrieval details |
+| `--json` | One JSON object: answer, references, visuals, notes, usage, and retrieval details |
 | `--report` | Also save a Markdown report; its path is printed to stderr |
 | `--debug` | On a model failure, also print the raw provider response to stderr |
 

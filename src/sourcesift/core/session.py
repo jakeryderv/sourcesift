@@ -17,6 +17,7 @@ from sourcesift.core.config import ContextSettings, Settings
 from sourcesift.core.context import prepare_request
 from sourcesift.core.store import SavedConversation, SavedTurn, SessionStore
 from sourcesift.errors import InputError
+from sourcesift.extend import Toolkit
 from sourcesift.models import (
     ContextDocument,
     Reference,
@@ -45,6 +46,7 @@ class Session:
         settings: Settings,
         registry: SourceRegistry,
         *,
+        toolkit: Toolkit | None = None,
         files: Sequence[str | Path] = (),
         save: bool = False,
         resume: bool = False,
@@ -57,6 +59,7 @@ class Session:
         self.settings = settings
         # The catalog is fixed; ``registry`` is the part enabled for this conversation.
         self._catalog = registry
+        self._toolkit = toolkit
         self.registry = registry
         self._store = (
             SessionStore(settings.sessions.directory) if save or resume else None
@@ -240,6 +243,7 @@ class Session:
                 state=candidate,
                 on_event=on_event,
                 cache=self._cache,
+                toolkit=self._toolkit,
             )
             self._state = candidate
             self._turns.append((parsed.prompt, result))

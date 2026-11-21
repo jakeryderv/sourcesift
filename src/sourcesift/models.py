@@ -3,13 +3,10 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import Field, field_validator
 
-
-class Contract(BaseModel):
-    """Immutable, validated public data."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+from sourcesift.contract import Contract
+from sourcesift.data import Block
 
 
 class ContextDocument(Contract):
@@ -84,13 +81,18 @@ class ResearchWindow(Contract):
 
 
 class Result(Contract):
-    """Answer, explicit capability limitations, and reported usage."""
+    """Answer, explicit capability limitations, and reported usage.
+
+    ``blocks`` are visuals the model chose to show, drawn from retrieved data and
+    kept only when the answer cites their evidence.
+    """
 
     answer: str = Field(repr=False)
     limitations: tuple[str, ...] = ()
     usage: Usage = Field(default_factory=Usage)
     model: str
     references: tuple[Reference, ...] = ()
+    blocks: tuple[Block, ...] = ()
     selected_sources: tuple[str, ...] = ()
     window: ResearchWindow | None = None
     http_requests: int = 0

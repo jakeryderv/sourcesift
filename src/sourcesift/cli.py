@@ -54,6 +54,13 @@ def render_result(result: Result, output_format: Literal["markdown", "plain"]) -
             f"Retrieved from: {ref.retrieved_from}"
             for ref in result.references
         )
+    if result.blocks:
+        # The terminal lists visuals; interfaces that can draw them use --json data.
+        text += "\n\nVisuals:\n" + "\n".join(
+            f"- {block.widget}: {block.view.title} "
+            f"[{'] ['.join(block.evidence_ids[:3])}]"
+            for block in result.blocks
+        )
     if result.limitations:
         text += "\n\n" + "\n".join(f"Note: {item}" for item in result.limitations)
     return text.rstrip() + "\n"

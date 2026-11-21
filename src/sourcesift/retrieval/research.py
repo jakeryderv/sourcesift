@@ -2,13 +2,18 @@
 
 import hashlib
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
+from pydantic import BaseModel, ValidationError
+
+from sourcesift.builtin import builtin_toolkit
 from sourcesift.core.config import Settings
+from sourcesift.data import Block, Chart, StatView, TableView
+from sourcesift.extend import FetchContext, Toolkit
 from sourcesift.models import Evidence, Reference, ResearchWindow
-from sourcesift.retrieval.apis import ADAPTERS
 from sourcesift.retrieval.http import Fetcher, Page, PageCache
 from sourcesift.retrieval.parsing import (
     ParsedItem,
@@ -38,6 +43,25 @@ def make_window(label: WindowName, settings: Settings, now: datetime) -> Researc
     )
 
 
+@dataclass(frozen=True)
+class Dataset:
+    """Shapes one data source query returned, tied to the evidence it produced."""
+
+    source_id: str
+    params: dict[str, Any]
+    shapes: tuple[BaseModel, ...]
+    evidence_ids: tuple[str, ...]
+    refresh_seconds: int | None
+
+
+def _problems(exc: ValidationError) -> str:
+    """Field names and messages only; never the rejected input."""
+    return "; ".join(
+        f"{'.'.join(str(part) for part in error['loc']) or 'value'}: {error['msg']}"
+        for error in exc.errors(include_input=False, include_url=False)[:5]
+    )
+
+
 class Research:
     """Bounded shared tool implementation, independent of the model framework."""
 
@@ -52,9 +76,15 @@ class Research:
         previous: dict[str, Evidence] | None = None,
         next_id: int = 1,
         cache: PageCache | None = None,
+        toolkit: Toolkit | None = None,
+        datasets: dict[str, Dataset] | None = None,
     ) -> None:
         self.settings = settings
         self.registry = registry
+        self.toolkit = toolkit if toolkit is not None else builtin_toolkit()
+        # Evidence ID -> the data returned with it, including earlier turns'.
+        self.datasets = dict(datasets or {})
+        self.blocks: list[Block] = []
         self.fetcher = fetcher
         self.cache = cache
         self.now = now or datetime.now(UTC)
@@ -109,13 +139,24 @@ class Research:
         return self.limitations_for(tuple(self.evidence.values()))
 
     def _reply(self) -> dict[str, object]:
-        return {
+        reply: dict[str, object] = {
             "window": self.window.model_dump(mode="json") if self.window else None,
             "evidence": [
                 item.model_dump(mode="json") for item in self.evidence.values()
             ],
             "limitations": self.limitations,
         }
+        showable = [
+            {
+                "evidence_id": data.evidence_ids[0],
+                "data": [type(shape).__name__ for shape in data.shapes],
+                "widgets": self.toolkit.fitting(data.shapes),
+            }
+            for data in {id(d): d for d in self.datasets.values()}.values()
+        ]
+        if showable:
+            reply["showable"] = showable
+        return reply
 
     async def research(
         self,
@@ -186,47 +227,140 @@ class Research:
         return self._reply()
 
     async def query_source(
-        self, source_id: str, query: str = "", window: WindowName = "recent"
+        self,
+        source_id: str,
+        params: dict[str, Any] | None = None,
+        window: WindowName = "recent",
     ) -> dict[str, object]:
         """Query one catalog source whose capabilities include "query".
 
-        These sources return live data for a short query instead of a feed. Follow
-        the source description for what the query may be; some accept an empty
-        string, others only a fixed dataset name. Use window as for research. A
-        window or named-publication constraint already set in this request stays
-        in force. Returned records are evidence to cite like any other.
+        These sources return live data instead of a feed. Pass params as an object
+        matching the source's params schema in the catalog. Use window as for
+        research; a window or named-publication constraint already set in this
+        request stays in force. Returned records are evidence to cite like any
+        other, and "showable" lists data that show can draw.
         """
         self.attempted = True
         if self.window is None:
             self.window = make_window(window, self.settings, self.now)
             self.only = ()
         source = self.registry.resolve(source_id)
-        if source is None or source.api is None:
+        data_source = self.toolkit.sources.get(source.id) if source else None
+        if source is None or data_source is None:
             self.note("A queried source is unknown, disabled, or not queryable.")
             return self._reply()
         only = [self.registry.resolve(name) for name in self.only or ()]
         if self.only and source.id not in {s.id for s in only if s is not None}:
             self.note("A source outside the requested publications was skipped.")
             return self._reply()
+        try:
+            parsed = data_source.params.model_validate(params or {})
+        except ValidationError as exc:
+            # Returned to the model to correct, not recorded as a coverage gap.
+            return self._reply() | {
+                "error": f"Invalid params for {source.id}: {_problems(exc)}"
+            }
         if source.id not in self.selected:
             if len(self.selected) >= self.settings.limits.max_sources:
                 self.note("Source limit reached; coverage is partial.")
                 return self._reply()
             self.selected.append(source.id)
+        limit = self.settings.limits.max_items_per_source
         try:
-            records = await ADAPTERS[source.api](
-                " ".join(query.split())[:200],
-                self.fetcher.get,
-                self.settings.limits.max_items_per_source,
-                self.window.start,
+            result = await data_source.fetch(
+                parsed,
+                FetchContext(self.fetcher.get, self.now, self.window.start, limit),
             )
-            if not records:
+            if not result.evidence:
                 self.note(f"{source.name}: the query returned no records.")
-            for item, page in records:
-                self._add(item, page, source.id, "api_record")
+            ids = []
+            for record in list(result.evidence)[:limit]:
+                item = ParsedItem(
+                    record.title,
+                    record.url,
+                    record.text,
+                    record.author,
+                    record.published_at,
+                )
+                if self._add(item, record.page, source.id, "api_record"):
+                    ids.append(self.evidence[item.url].id)
+            shapes = tuple(
+                shape for shape in result.data if isinstance(shape, data_source.returns)
+            )
+            if ids and shapes:
+                dataset = Dataset(
+                    source.id,
+                    parsed.model_dump(mode="json"),
+                    shapes,
+                    tuple(ids),
+                    data_source.refresh_seconds,
+                )
+                self.datasets.update(dict.fromkeys(ids, dataset))
         except RetrievalError as exc:
             self.note(f"{source.name}: {exc}")
         return self._reply()
+
+    async def show(
+        self, evidence_id: str, widget: str, options: dict[str, Any] | None = None
+    ) -> dict[str, object]:
+        """Show data returned by query_source as a visual beside the answer.
+
+        Pass an evidence_id listed under "showable" and a widget that accepts its
+        data; options must match the widget's options schema in the payload. The
+        application draws the visual from the retrieved data: values cannot be
+        passed in. Cite the same evidence in the answer or the visual is omitted.
+        """
+        key = evidence_id.strip().strip("[]")
+        dataset = self.datasets.get(key)
+        if dataset is None:
+            return {
+                "error": "No data is attached to that evidence. Only evidence listed "
+                "under showable, from query_source in this conversation, can be shown."
+            }
+        chosen = self.toolkit.widgets.get(widget.strip())
+        fitting = self.toolkit.fitting(dataset.shapes)
+        shape = next(
+            (s for s in dataset.shapes if chosen and isinstance(s, chosen.accepts)),
+            None,
+        )
+        if chosen is None or shape is None:
+            return {
+                "error": "That widget is unknown or does not accept this data. "
+                f"Widgets that fit: {', '.join(fitting) or 'none'}."
+            }
+        try:
+            parsed = chosen.options.model_validate(options or {})
+            view = chosen.render(shape, parsed)
+            if not isinstance(view, Chart | TableView | StatView):
+                raise TypeError
+        except ValidationError as exc:
+            return {"error": f"Invalid options for {chosen.id}: {_problems(exc)}"}
+        except (ArithmeticError, LookupError, TypeError, ValueError):
+            return {"error": f"The {chosen.id} widget could not draw this data."}
+        block = Block(
+            widget=chosen.id,
+            evidence_ids=dataset.evidence_ids,
+            source_id=dataset.source_id,
+            params=dataset.params,
+            options=parsed.model_dump(mode="json"),
+            refresh_seconds=dataset.refresh_seconds,
+            view=view,
+        )
+        if block in self.blocks:
+            return {"shown": chosen.id, "title": view.title}
+        if len(self.blocks) >= self.settings.limits.max_blocks:
+            return {"error": "The limit on visuals for one answer was reached."}
+        self.blocks.append(block)
+        return {
+            "shown": chosen.id,
+            "title": view.title,
+            "cite": f"Cite [{key}] in the answer, or this visual is omitted.",
+        }
+
+    def blocks_for(self, answer: str) -> tuple[Block, ...]:
+        """Shown visuals whose evidence the answer cites."""
+        cited = {"S" + value for value in CITATION.findall(answer)}
+        return tuple(b for b in self.blocks if cited.intersection(b.evidence_ids))
 
     async def read_article(self, url: str) -> dict[str, object]:
         """Read a returned article link for detail, within the original constraints.
@@ -272,7 +406,7 @@ class Research:
         return page
 
     async def _source(self, source: Source) -> None:
-        if source.api is not None:
+        if "query" in source.capabilities:
             raise RetrievalError("This source is queried with query_source.")
         if "feed" not in source.capabilities:
             raise RetrievalError("This source does not offer feed access.")

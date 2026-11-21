@@ -18,10 +18,11 @@ from sourcesift import (
     load_settings,
 )
 from sourcesift.agents import runtime
+from sourcesift.builtin import BUILTIN_CATALOG
 from sourcesift.retrieval.http import Fetcher, Page
 from sourcesift.retrieval.research import Research
 from sourcesift.retrieval.urls import RetrievalError
-from sourcesift.sources import BUILTIN_SOURCES, Source
+from sourcesift.sources import Source
 
 FIXTURE_SOURCE = Source(
     id="fixture-news",
@@ -98,7 +99,7 @@ async def evaluate(case: dict, output: Path) -> bool:
     }
     if case.get("fixture"):
         overrides["sources"] = {
-            "disabled": [s.id for s in BUILTIN_SOURCES],
+            "disabled": [s.id for s in BUILTIN_CATALOG],
             "custom": [FIXTURE_SOURCE.model_dump()],
         }
     settings = load_settings(overrides=overrides)

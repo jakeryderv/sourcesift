@@ -85,6 +85,7 @@ class Limits(Contract):
     max_sources: int = Field(default=3, ge=1, le=16)
     max_items: int = Field(default=18, ge=1, le=100)
     max_items_per_source: int = Field(default=6, ge=1, le=25)
+    max_blocks: int = Field(default=4, ge=0, le=12)
     max_articles: int = Field(default=6, ge=0, le=30)
     max_http_requests: int = Field(default=24, ge=1, le=100)
     http_timeout_seconds: float = Field(default=10, gt=0, le=60, allow_inf_nan=False)
