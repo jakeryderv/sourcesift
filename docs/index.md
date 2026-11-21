@@ -5,7 +5,7 @@ with explicit context. The model selects from registered source descriptions;
 Python retrieves and normalizes evidence, preserves provenance, and supplies
 references for the answer.
 
-Phases 1 and 2 implement supplied-text analysis and bounded research across 28
+Phases 1 and 2 implement supplied-text analysis and bounded research across 31
 sources covering US national and world news, technology, AI, science, health,
 business, marketing, finance, and US policy and government.
 See [research and sources](research.md) for the catalog, freshness rules, and limits.

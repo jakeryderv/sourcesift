@@ -42,6 +42,8 @@ comprehensive coverage, and can miss relevant reporting. Local news is not cover
 | `gao` | GAO | US Government Accountability Office reports and testimony auditing federal programs and spending | [RSS](https://www.gao.gov/rss/reports.xml) |
 | `justice-department` | US Department of Justice | Official US Department of Justice press releases on prosecutions, settlements, and enforcement | [RSS](https://www.justice.gov/news/rss?m=1) |
 
+| `arxiv` | arXiv | New AI, machine learning, and computational linguistics preprints with abstracts | [RSS](https://rss.arxiv.org/rss/cs.AI+cs.LG+cs.CL) |
+
 Sources marked “summaries only” refuse automated article retrieval (through
 robots rules or by blocking the request), so answers can cite their feed summaries
 but `read_article` and `/read` cannot fetch the full text.
@@ -51,6 +53,29 @@ does not imply that every linked article is accessible; subscriptions, robots
 restrictions, JavaScript, and extraction failures can limit article access.
 Custom source definitions use the same adapters; see [configuration](configuration.md)
 and [SDK registration](sdk.md#source-definitions).
+
+## Live data sources
+
+Some sources answer a short query with current data instead of offering a feed.
+The model reaches them through the `query_source` tool, and their records are
+cited like any other evidence, with the kind `api record`.
+
+| ID | Source | A query is | Returns |
+|---|---|---|---|
+| `hacker-news` | Hacker News | Empty for the current front page, or a few keywords | Story titles, points, comment counts, and submitted links; keyword results are limited to the date window |
+| `us-treasury` | US Treasury Fiscal Data | Exactly `debt`, `interest-rates`, or `exchange-rates` | The latest published figures for that dataset, with its record date |
+
+Each of these is a built-in adapter that requests only its own documented
+endpoints. The model supplies the query text, which is sent as a URL-encoded
+parameter; it cannot choose a host or path. Requests use the same bounded HTTP
+adapter as feeds, so address checks, robots rules, byte limits, and the request
+budget all apply. Hacker News points and comments measure attention, not accuracy.
+A Treasury record date is a reporting period rather than a publication time, so
+those records are not filtered by the date window.
+
+arXiv, Open-Meteo, and the US National Weather Service publish APIs whose hosts
+disallow all automated agents in `robots.txt`. SourceSift honors that, so there is
+no weather source and arXiv is read through its RSS feed without search.
 
 ## Selection and retrieval
 

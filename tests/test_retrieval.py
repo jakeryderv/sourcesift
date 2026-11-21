@@ -1,8 +1,9 @@
 """Deterministic parser/network fixtures: no publisher or model requests."""
 
 import asyncio
+import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import httpx
@@ -22,6 +23,7 @@ from sourcesift import (
     load_settings,
 )
 from sourcesift.retrieval import http
+from sourcesift.retrieval.apis import ADAPTERS
 from sourcesift.retrieval.http import Fetcher, Page, public_address
 from sourcesift.retrieval.parsing import (
     discover_feeds,
@@ -208,13 +210,27 @@ def test_normalization_idempotent(query):
 
 def test_registry_settings_and_sdk_registration(tmp_path):
     registry = SourceRegistry(BUILTIN_SOURCES)
-    assert len(registry.list()) == 28
+    assert len(registry.list()) == 31
     # Publishers that refuse article retrieval are registered as summaries only.
-    assert {s.id for s in registry.list() if "article" not in s.capabilities} == {
+    assert {s.id for s in registry.list() if s.capabilities == ("feed",)} == {
         "al-jazeera",
         "lwn",
         "politico",
     }
+    # Live data sources are queried through an adapter and declare no feeds.
+    assert {s.id: s.api for s in registry.list() if s.api} == {
+        "hacker-news": "hacker-news",
+        "us-treasury": "us-treasury",
+    }
+    assert set(ADAPTERS) == {s.api for s in registry.list() if s.api}
+    for change in (
+        {"api": "hacker-news"},
+        {"capabilities": ["query"]},
+        {"api": "hacker-news", "capabilities": ["query", "feed"]},
+        {"api": "unknown-service", "capabilities": ["query"], "feeds": []},
+    ):
+        with pytest.raises(ValidationError):
+            SOURCE.model_validate({**SOURCE.model_dump(), **change})
     resolved = registry.resolve("  PBS NEWS HOUR ")
     assert resolved is not None and resolved.id == "pbs"
     assert registry.resolve("missing") is None
@@ -744,3 +760,171 @@ async def test_conversation_cache_reuses_feeds_but_not_articles():
     cache.set("https://example.com/feed", first_page)
     cache.clear()
     assert cache.get("https://example.com/feed") is None
+
+
+HN = Source(
+    id="hn",
+    name="Hacker News",
+    website="https://news.ycombinator.com/",
+    description="Community stories",
+    api="hacker-news",
+    capabilities=("query",),
+)
+TREASURY = Source(
+    id="treasury",
+    name="US Treasury Fiscal Data",
+    website="https://fiscaldata.treasury.gov/",
+    description="Fiscal datasets",
+    api="us-treasury",
+    capabilities=("query",),
+)
+
+
+def api_fetcher(body):
+    """Echo the requested URL so the adapter's request can be inspected."""
+    fetcher = AsyncMock()
+
+    async def get(url):
+        return page(json.dumps(body), url, "application/json")
+
+    fetcher.get.side_effect = get
+    return fetcher
+
+
+@pytest.mark.asyncio
+async def test_hacker_news_front_page_and_windowed_search():
+    hits = {
+        "hits": [
+            {
+                "objectID": "101",
+                "title": "  Show HN:\n a [library]  ",
+                "url": "https://example.com/project",
+                "points": 120,
+                "num_comments": 0,
+                "author": "someone",
+                "created_at": "2026-10-14T09:00:00Z",
+                "story_text": "<p>Details <script>ignored()</script>here.</p>",
+            },
+            {"objectID": "not-a-number", "title": "Skipped"},
+            {"objectID": "102", "title": ""},
+            "not a record",
+        ]
+    }
+    fetcher = api_fetcher(hits)
+    run = Research(Settings(), SourceRegistry([HN]), fetcher, "what is on HN", now=NOW)
+    reply = await run.query_source("hn", "  ", "today")
+    assert fetcher.get.await_args.args[0] == (
+        "https://hn.algolia.com/api/v1/search?hitsPerPage=6&tags=front_page"
+    )
+    (item,) = run.evidence.values()
+    assert item.url == "https://news.ycombinator.com/item?id=101"
+    assert item.kind == "api_record" and item.source_id == "hn"
+    assert item.title == "Show HN: a [library]" and item.author == "someone"
+    assert "120 points and 0 comments" in item.text
+    assert "Submitted link: https://example.com/project" in item.text
+    assert "Details here." in item.text and "ignored" not in item.text
+    assert item.limitations == () and reply["evidence"]
+    assert run.selected == ["hn"]
+
+    # A keyword query searches stories and is bounded by the request window.
+    search = Research(Settings(), SourceRegistry([HN]), fetcher, "rust on HN", now=NOW)
+    await search.query_source("hn", "rust  async & more" + "x" * 300, "recent")
+    url = fetcher.get.await_args.args[0]
+    assert "tags=story" in url and "query=rust+async+%26+more" in url
+    assert len(url) < 400
+    since = int((NOW - timedelta(days=7)).timestamp())
+    assert f"numericFilters=created_at_i%3E{since}" in url
+
+
+@pytest.mark.asyncio
+async def test_treasury_dataset_is_named_and_keeps_the_latest_period():
+    body = {
+        "data": [
+            {
+                "record_date": "2026-09-30",
+                "security_desc": "Treasury Bills",
+                "avg_interest_rate_amt": "4.014",
+                "src_line_nbr": "1",
+                "record_fiscal_year": "2026",
+                "record_calendar_month": "09",
+            },
+            {
+                "record_date": "2026-09-30",
+                "security_desc": "Treasury Notes",
+                "avg_interest_rate_amt": "3.399",
+            },
+            {
+                "record_date": "2026-08-31",
+                "security_desc": "Old Bills",
+                "avg_interest_rate_amt": "9.999",
+            },
+        ],
+        "meta": {"labels": {"avg_interest_rate_amt": "Average Interest Rate Amount"}},
+    }
+    fetcher = api_fetcher(body)
+    run = Research(Settings(), SourceRegistry([TREASURY]), fetcher, "rates", now=NOW)
+    # A reporting period older than the window is still the latest published value.
+    await run.query_source("treasury", "Interest Rates", "today")
+    assert fetcher.get.await_args.args[0] == (
+        "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/"
+        "v2/accounting/od/avg_interest_rates?sort=-record_date&page%5Bsize%5D=40"
+    )
+    (item,) = run.evidence.values()
+    assert item.title == (
+        "Average Interest Rates on US Treasury Securities (as of 2026-09-30)"
+    )
+    assert item.kind == "api_record" and item.published_at is None
+    assert item.limitations == ()
+    assert "Average Interest Rate Amount: 4.014" in item.text
+    assert "Treasury Notes" in item.text and "Old Bills" not in item.text
+    assert "src_line_nbr" not in item.text and "record_fiscal_year" not in item.text
+
+    unknown = Research(Settings(), SourceRegistry([TREASURY]), fetcher, "x", now=NOW)
+    calls = fetcher.get.await_count
+    await unknown.query_source("treasury", "stock prices")
+    assert fetcher.get.await_count == calls and not unknown.evidence
+    assert any("must be one of: debt" in note for note in unknown.limitations)
+
+
+@pytest.mark.asyncio
+async def test_query_source_constraints_and_failures():
+    registry = SourceRegistry([SOURCE, HN, TREASURY])
+    fetcher = api_fetcher({"hits": []})
+
+    run = Research(Settings(), registry, fetcher, "news", now=NOW)
+    await run.query_source("fixture", "anything")
+    await run.query_source("missing", "anything")
+    assert fetcher.get.await_count == 0
+    assert any("not queryable" in note for note in run.limitations)
+    await run.query_source("hn", "")
+    assert any("returned no records" in note for note in run.limitations)
+
+    # A feed request for a queryable source explains which tool applies.
+    feeds = Research(Settings(), registry, fetcher, "news", now=NOW)
+    await feeds.research(["hn"], [], [], "recent")
+    assert any("query_source" in note for note in feeds.limitations)
+
+    # A named-publication constraint set by research stays in force.
+    named = Research(Settings(), registry, fetcher, "only fixture", now=NOW)
+    fetcher.get.side_effect = None
+    fetcher.get.return_value = page(feed(entry()))
+    await named.research(["fixture"], [], ["Fixture News"], "any")
+    count = fetcher.get.await_count
+    await named.query_source("hn", "")
+    assert fetcher.get.await_count == count and named.selected == ["fixture"]
+    assert named.window is not None and named.window.label == "any"
+
+    limited = Research(
+        Settings(limits=Limits(max_sources=1)), registry, api_fetcher({}), "x", now=NOW
+    )
+    await limited.query_source("hn", "")
+    await limited.query_source("treasury", "debt")
+    assert limited.selected == ["hn"]
+    assert any("Source limit reached" in note for note in limited.limitations)
+
+    for body in ("not json", "[1, 2]"):
+        broken = AsyncMock()
+        broken.get.return_value = page(body, "https://hn.algolia.com/x", "text/plain")
+        failed = Research(Settings(), registry, broken, "x", now=NOW)
+        await failed.query_source("hn", "")
+        assert any("unexpected response" in note for note in failed.limitations)

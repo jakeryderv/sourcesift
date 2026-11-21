@@ -64,7 +64,7 @@ class Reference(Contract):
     published_at: datetime | None = None
     updated_at: datetime | None = None
     retrieved_at: datetime
-    kind: Literal["feed_summary", "article"]
+    kind: Literal["feed_summary", "article", "api_record"]
     limitations: tuple[str, ...] = ()
 
 

@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from sourcesift.core.config import Settings
 from sourcesift.models import Evidence, Reference, ResearchWindow
+from sourcesift.retrieval.apis import ADAPTERS
 from sourcesift.retrieval.http import Fetcher, Page, PageCache
 from sourcesift.retrieval.parsing import (
     ParsedItem,
@@ -184,6 +185,49 @@ class Research:
             self.note("Article limit reached; coverage is partial.")
         return self._reply()
 
+    async def query_source(
+        self, source_id: str, query: str = "", window: WindowName = "recent"
+    ) -> dict[str, object]:
+        """Query one catalog source whose capabilities include "query".
+
+        These sources return live data for a short query instead of a feed. Follow
+        the source description for what the query may be; some accept an empty
+        string, others only a fixed dataset name. Use window as for research. A
+        window or named-publication constraint already set in this request stays
+        in force. Returned records are evidence to cite like any other.
+        """
+        self.attempted = True
+        if self.window is None:
+            self.window = make_window(window, self.settings, self.now)
+            self.only = ()
+        source = self.registry.resolve(source_id)
+        if source is None or source.api is None:
+            self.note("A queried source is unknown, disabled, or not queryable.")
+            return self._reply()
+        only = [self.registry.resolve(name) for name in self.only or ()]
+        if self.only and source.id not in {s.id for s in only if s is not None}:
+            self.note("A source outside the requested publications was skipped.")
+            return self._reply()
+        if source.id not in self.selected:
+            if len(self.selected) >= self.settings.limits.max_sources:
+                self.note("Source limit reached; coverage is partial.")
+                return self._reply()
+            self.selected.append(source.id)
+        try:
+            records = await ADAPTERS[source.api](
+                " ".join(query.split())[:200],
+                self.fetcher.get,
+                self.settings.limits.max_items_per_source,
+                self.window.start,
+            )
+            if not records:
+                self.note(f"{source.name}: the query returned no records.")
+            for item, page in records:
+                self._add(item, page, source.id, "api_record")
+        except RetrievalError as exc:
+            self.note(f"{source.name}: {exc}")
+        return self._reply()
+
     async def read_article(self, url: str) -> dict[str, object]:
         """Read a returned article link for detail, within the original constraints.
 
@@ -228,6 +272,8 @@ class Research:
         return page
 
     async def _source(self, source: Source) -> None:
+        if source.api is not None:
+            raise RetrievalError("This source is queried with query_source.")
         if "feed" not in source.capabilities:
             raise RetrievalError("This source does not offer feed access.")
         feeds = source.feeds
@@ -309,7 +355,7 @@ class Research:
         item: ParsedItem,
         page: Page,
         source_id: str | None,
-        kind: Literal["feed_summary", "article"],
+        kind: Literal["feed_summary", "article", "api_record"],
         *,
         replacing: str | None = None,
     ) -> bool:
@@ -357,7 +403,10 @@ class Research:
             return False
         text = item.text[: min(limits.max_item_chars, remaining)]
         warnings = []
-        if date is None:
+        if date is None and kind == "api_record":
+            # A data record states its own reporting period in its text.
+            pass
+        elif date is None:
             warnings.append(
                 "Publication/update date is unknown; freshness is unverified."
             )
