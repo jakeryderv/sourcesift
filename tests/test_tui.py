@@ -736,3 +736,67 @@ async def test_read_and_evidence_commands(session, monkeypatch):
         )
         assert prompts == [expected]
         assert editor.text == ""
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_lists_and_limits_sources(session):
+    from textual.widgets import SelectionList
+
+    from sourcesift.tui_panels import SourcesScreen
+
+    app = ChatApp(session)
+    async with app.run_test(size=(110, 40)) as pilot:
+        editor = app.query_one("#prompt", TextArea)
+        status = app.query_one("#status", Static)
+        total = len(session.sources)
+        assert total == 31 and all(enabled for _, enabled in session.sources)
+
+        editor.load_text("/sources")
+        await pilot.press("escape", "enter")
+        assert isinstance(app.screen, SourcesScreen)
+        choices = app.screen.query_one("#source-list", SelectionList)
+        assert choices.option_count == total and len(choices.selected) == total
+        detail = app.screen.query_one("#source-detail", Static)
+        assert "NPR (npr) · feed and articles" in str(detail.content)
+        labels = [str(choices.get_option_at_index(i).prompt) for i in range(total)]
+        assert "Hacker News · live data" in labels
+        assert "Politico · feed only" in labels
+
+        # Space toggles the highlighted source; moving shows its description.
+        await pilot.press("space", "down")
+        assert "PBS NewsHour (pbs)" in str(detail.content)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert "30 of 31 sources enabled" in str(status.content)
+        assert "npr" not in {s.id for s in session.registry.list()}
+        assert [s.id for s, enabled in session.sources if not enabled] == ["npr"]
+
+        # The panel reopens with the current choice; n and a set everything.
+        editor.load_text("/sources")
+        await pilot.press("escape", "enter")
+        choices = app.screen.query_one("#source-list", SelectionList)
+        assert len(choices.selected) == 30
+        await pilot.press("n")
+        assert choices.selected == []
+        await pilot.press("escape")
+        await pilot.pause()
+        assert session.registry.list() == () and "0 of 31" in str(status.content)
+        editor.load_text("/sources")
+        await pilot.press("escape", "enter", "a", "escape")
+        await pilot.pause()
+        assert len(session.registry.list()) == 31
+
+        # A new conversation starts with every source again.
+        session.enable_sources(["npr", "hacker-news"])
+        assert [s.id for s in session.registry.list()] == ["npr", "hacker-news"]
+        with pytest.raises(InputError, match="must exist"):
+            session.enable_sources(["npr", "missing"])
+        session.reset()
+        assert len(session.registry.list()) == 31
+
+        app._turn_active = True
+        editor.load_text("/sources")
+        await pilot.press("escape", "enter")
+        assert not isinstance(app.screen, SourcesScreen)
+        assert "before changing sources" in str(status.content)
+        app._turn_active = False

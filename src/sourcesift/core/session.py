@@ -1,6 +1,6 @@
 """Conversations shared by terminal and Python clients; in memory unless saved."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from copy import deepcopy
 from pathlib import Path
 
@@ -25,7 +25,7 @@ from sourcesift.models import (
     SessionEvent,
 )
 from sourcesift.retrieval.http import PageCache
-from sourcesift.sources import SourceRegistry
+from sourcesift.sources import Source, SourceRegistry
 
 
 class Session:
@@ -55,6 +55,8 @@ class Session:
                 "in a message instead."
             )
         self.settings = settings
+        # The catalog is fixed; ``registry`` is the part enabled for this conversation.
+        self._catalog = registry
         self.registry = registry
         self._store = (
             SessionStore(settings.sessions.directory) if save or resume else None
@@ -152,6 +154,29 @@ class Session:
         )
         self._path = path
 
+    @property
+    def sources(self) -> tuple[tuple[Source, bool], ...]:
+        """Every catalog source with whether this conversation may use it."""
+        enabled = {source.id for source in self.registry.list()}
+        return tuple((source, source.id in enabled) for source in self._catalog.list())
+
+    def enable_sources(self, source_ids: Iterable[str]) -> None:
+        """Limit later turns to these catalog sources; ``reset()`` restores all.
+
+        Evidence already retrieved stays citable. An empty selection leaves only
+        supplied documents and URLs given in a prompt.
+        """
+        if self.busy:
+            raise InputError(
+                "Finish or cancel the active turn before changing sources."
+            )
+        wanted = set(source_ids)
+        if wanted - {source.id for source in self._catalog.list()}:
+            raise InputError("Enabled source IDs must exist in the catalog.")
+        self.registry = SourceRegistry(
+            source for source in self._catalog.list() if source.id in wanted
+        )
+
     def reset(self) -> None:
         """Start fresh and reload files; a read error preserves the old session."""
         if self.busy:
@@ -163,6 +188,7 @@ class Session:
         self._state = ConversationState()
         self._turns.clear()
         self._cache.clear()
+        self.registry = self._catalog
         # A fresh conversation gets its own file; the previous one is kept.
         self._path = None
 

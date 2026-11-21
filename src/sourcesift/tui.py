@@ -42,7 +42,7 @@ from sourcesift.errors import ModelError, SourceSiftError
 from sourcesift.model_catalog import ModelCatalog
 from sourcesift.models import Request, Result, SessionEvent
 from sourcesift.reports import save_report
-from sourcesift.tui_panels import HELP, HelpScreen, ModelScreen
+from sourcesift.tui_panels import HELP, HelpScreen, ModelScreen, SourcesScreen
 
 
 class ChatInput(TextArea):
@@ -139,6 +139,8 @@ class ChatApp(App[None]):
     #model-error { color: $error; }
     #model-completions { height: auto; max-height: 7; display: none; border: round $accent; }
     #catalog-status { height: auto; color: $text-muted; }
+    #source-list { height: 1fr; border: round $accent; }
+    #source-detail { height: auto; max-height: 8; color: $text-muted; }
     """
     BINDINGS: ClassVar = [
         Binding("escape", "cancel_turn", "Cancel", priority=True),
@@ -461,6 +463,8 @@ class ChatApp(App[None]):
                 self.action_save_report()
             elif prompt == "/evidence":
                 self.push_screen(EvidenceScreen(self.session))
+            elif prompt == "/sources":
+                self.action_show_sources()
             else:
                 self._status("Unknown command. Type / to see commands, or /help.")
                 return
@@ -589,6 +593,10 @@ class ChatApp(App[None]):
                 and self.screen.dismiss_completions()
             ):
                 return
+            if isinstance(self.screen, SourcesScreen):
+                # Esc keeps the choices made in the panel rather than discarding them.
+                self.screen.action_done()
+                return
             self.pop_screen()
             return
         popup = self.query_one("#completions", OptionList)
@@ -636,6 +644,23 @@ class ChatApp(App[None]):
             f"Read [{item.id}] in full ({item.url}) and report what the article "
             "adds beyond the feed summary, citing it."
         )
+
+    def action_show_sources(self) -> None:
+        if self._turn_active:
+            self._status("Finish or cancel the active turn before changing sources.")
+            return
+        self.push_screen(SourcesScreen(self.session.sources), self._apply_sources)
+
+    def _apply_sources(self, enabled: tuple[str, ...] | None) -> None:
+        if enabled is None:
+            return
+        try:
+            self.session.enable_sources(enabled)
+        except SourceSiftError as exc:
+            self._status(str(exc))
+            return
+        total = len(self.session.sources)
+        self._status(f"{len(enabled)} of {total} sources enabled for this chat")
 
     def action_save_report(self) -> None:
         """Save the latest completed turn; the model takes no part in the write."""

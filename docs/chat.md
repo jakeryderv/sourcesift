@@ -78,6 +78,7 @@ Available commands:
 | `/model` | Edit the model, reasoning effort, and API key for this chat |
 | `/evidence` | List the evidence retained for citations, by ID |
 | `/read S3` | Ask for the cited article in full and what it adds beyond the feed summary |
+| `/sources` | Browse every source and choose which ones this chat may use |
 | `/report` | Save the latest answer, with its references and notes, as a Markdown report |
 | `/cancel` | Cancel the active turn |
 | `/help` | Open the controls and commands panel |
@@ -167,6 +168,20 @@ file leaves the current session intact. Use `/model` for session-only model chan
 settings. Configured paths are relative to their TOML file; `--file` paths are
 relative to the working directory. All selected context is sent to the configured
 model through OpenRouter.
+
+## Browse and limit sources
+
+`/sources` lists the whole catalog. Each row shows how the source is read: `feed
+and articles`, `feed only` (the publisher refuses article retrieval), or `live
+data` (queried through an API). Moving through the list shows the highlighted
+source's description, topics, and coverage.
+
+Space switches a source off or on for this chat; `a` enables all and `n` disables
+all. Esc saves the choice and closes the panel. Later turns can only select from
+the enabled sources, and the model is told only about those. Evidence already
+retrieved stays citable. `/new` enables every source again, and a continued
+conversation also starts with all of them. To switch a source off permanently,
+use `[sources].disabled` in the [configuration](configuration.md#sources-and-freshness).
 
 ## Save and continue a conversation
 

@@ -203,7 +203,7 @@ prototype while keeping the Python SDK, CLI, and TUI as the product:
 Open questions from this round:
 
 - [ ] Decide whether documented public APIs may be exempt from the robots check. arXiv search, Open-Meteo, and the US National Weather Service disallow all agents on their API hosts, so weather is not covered and arXiv is feed-only.
-- [ ] Add `/sources` to enable or disable sources for one conversation.
+- [x] Add `/sources` to browse the catalog and enable or disable sources for one conversation.
 - [ ] Re-run the live evaluation against the larger catalog and record a new baseline.
 
 ## Phase 4 — Discovery Workflows and Recommendations

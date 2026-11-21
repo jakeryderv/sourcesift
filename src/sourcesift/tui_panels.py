@@ -9,12 +9,14 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, OptionList, Select, Static
+from textual.widgets import Button, Input, OptionList, Select, SelectionList, Static
+from textual.widgets.selection_list import Selection
 
 from sourcesift.completion import COMMANDS, fuzzy_matches
 from sourcesift.core.config import AgentSettings
 from sourcesift.errors import ConfigurationError
 from sourcesift.model_catalog import CatalogModel, ModelCatalog
+from sourcesift.sources import Source
 
 HELP = "Enter send · Shift+Enter newline (Ctrl+J fallback) · / commands · @ files · Esc cancel"
 
@@ -44,6 +46,78 @@ class HelpScreen(ModalScreen[None]):
 
     def on_button_pressed(self) -> None:
         self.dismiss()
+
+
+def source_kind(source: Source) -> str:
+    """How a source is read, in the words the catalog documentation uses."""
+    if source.api is not None:
+        return "live data"
+    return "feed and articles" if "article" in source.capabilities else "feed only"
+
+
+class SourcesScreen(ModalScreen[tuple[str, ...]]):
+    """Browse the catalog and choose which sources this conversation may use."""
+
+    BINDINGS: ClassVar = [
+        Binding("escape", "done", "Done"),
+        Binding("a", "all", "Enable all"),
+        Binding("n", "none", "Disable all"),
+    ]
+
+    def __init__(self, sources: tuple[tuple[Source, bool], ...]) -> None:
+        super().__init__()
+        self.sources = sources
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="panel"):
+            yield Static("Sources for this chat", classes="label")
+            yield Static(
+                "Space toggles · a enables all · n disables all · Esc saves and closes",
+                markup=False,
+            )
+            yield SelectionList[str](
+                *(
+                    Selection(
+                        Text(f"{source.name} · {source_kind(source)}"),
+                        source.id,
+                        enabled,
+                    )
+                    for source, enabled in self.sources
+                ),
+                id="source-list",
+            )
+            yield Static("", id="source-detail", markup=False)
+
+    def on_mount(self) -> None:
+        self.query_one("#source-list", SelectionList).focus()
+        self._describe(0)
+
+    def _describe(self, index: int | None) -> None:
+        if index is None or not self.sources:
+            return
+        source = self.sources[index][0]
+        self.query_one("#source-detail", Static).update(
+            Text(
+                f"{source.name} ({source.id}) · {source_kind(source)}\n"
+                f"{source.description}\n"
+                f"Topics: {', '.join(source.topics) or 'unspecified'} · "
+                f"Coverage: {source.geography}"
+            )
+        )
+
+    def on_selection_list_selection_highlighted(
+        self, event: SelectionList.SelectionHighlighted
+    ) -> None:
+        self._describe(event.selection_index)
+
+    def action_all(self) -> None:
+        self.query_one("#source-list", SelectionList).select_all()
+
+    def action_none(self) -> None:
+        self.query_one("#source-list", SelectionList).deselect_all()
+
+    def action_done(self) -> None:
+        self.dismiss(tuple(self.query_one("#source-list", SelectionList).selected))
 
 
 class ModelScreen(ModalScreen[AgentSettings | None]):

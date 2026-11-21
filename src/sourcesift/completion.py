@@ -20,6 +20,7 @@ COMMANDS = {
     "/evidence": "List the evidence retained for citations",
     "/read": "Read a cited article in full, for example /read S3",
     "/report": "Save the latest answer as a Markdown report",
+    "/sources": "Browse sources and choose which this chat may use",
     "/cancel": "Stop the active research turn",
     "/help": "Show controls and commands",
     "/quit": "Exit chat",

@@ -132,6 +132,10 @@ print(second.answer, second.references)
 session.reset()  # clears history and reloads configured/initial context files
 ```
 
+`session.sources` lists every catalog source with whether the conversation may use
+it, and `session.enable_sources(["npr", "hacker-news"])` limits later turns to
+those IDs until `reset()`.
+
 Sessions are independent objects, kept in memory by default. `app.session(save=True)`
 writes the conversation to a file after each completed turn, `session.saved_path`
 reports where, and `app.session(resume=True)` continues the most recently saved
