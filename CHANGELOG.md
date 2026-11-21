@@ -2,6 +2,30 @@
 
 Release Please maintains this file through reviewed release PRs.
 
+## [0.6.0](https://github.com/jakeryderv/sourcesift/compare/v0.5.0...v0.6.0) (2026-11-21)
+
+
+### Features
+
+* **chat:** add /read and /evidence and reuse feeds within a conversation ([#30](https://github.com/jakeryderv/sourcesift/issues/30)) ([ca438fd](https://github.com/jakeryderv/sourcesift/commit/ca438fdacc52827ac139fb3d08c41ae9116d538b))
+* **chat:** add opt-in saved conversations with --save and --continue ([#33](https://github.com/jakeryderv/sourcesift/issues/33)) ([5fd8f54](https://github.com/jakeryderv/sourcesift/commit/5fd8f547e84f95e5ff9ac6bc98c52dd29f712818))
+* **cli:** add --json output for ask ([#28](https://github.com/jakeryderv/sourcesift/issues/28)) ([2899169](https://github.com/jakeryderv/sourcesift/commit/2899169f184d2ab471c1613e15f29fa41cfdccc3))
+* save answers as Markdown reports ([#29](https://github.com/jakeryderv/sourcesift/issues/29)) ([2b5f06b](https://github.com/jakeryderv/sourcesift/commit/2b5f06b2ffc9b73b495f50e4268bdc81855ac3a3))
+* **sources:** add 20 feeds for world news, science, health, tech, and policy ([#31](https://github.com/jakeryderv/sourcesift/issues/31)) ([9f27444](https://github.com/jakeryderv/sourcesift/commit/9f27444ed4142335328585e1318be4774f92acfb))
+* **sources:** add live data sources for Hacker News and US Treasury ([#32](https://github.com/jakeryderv/sourcesift/issues/32)) ([6885970](https://github.com/jakeryderv/sourcesift/commit/6885970852acf08d341f9839ea7acba308b573e1))
+
+
+### Bug Fixes
+
+* silence the urllib3 SOCKS warning printed on every command ([#35](https://github.com/jakeryderv/sourcesift/issues/35)) ([1133ecb](https://github.com/jakeryderv/sourcesift/commit/1133ecb3f9d12b34125b0c8dc4b18efae28a99fa))
+* surface provider error reasons and use a bare User-Agent ([#27](https://github.com/jakeryderv/sourcesift/issues/27)) ([e7ab60c](https://github.com/jakeryderv/sourcesift/commit/e7ab60cdf60c41b802edcfb60df377a3e145f639))
+
+
+### Documentation
+
+* add Quarto architecture overview ([#25](https://github.com/jakeryderv/sourcesift/issues/25)) ([49a8d9d](https://github.com/jakeryderv/sourcesift/commit/49a8d9dee74887a171c192f6a1c192743f0d690e))
+* record the follow-up round in the roadmap and README ([#34](https://github.com/jakeryderv/sourcesift/issues/34)) ([fe05b52](https://github.com/jakeryderv/sourcesift/commit/fe05b52788208dc051c8ca6ce9735f8df12989f9))
+
 ## [0.5.0](https://github.com/jakeryderv/sourcesift/compare/v0.4.0...v0.5.0) (2026-10-15)
 
 
