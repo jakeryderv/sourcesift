@@ -17,7 +17,6 @@ from importlib.resources import files
 from typing import Any
 
 from markdown_it import MarkdownIt
-from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
@@ -28,7 +27,6 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from sourcesift.core.application import SourceSift
 from sourcesift.core.session import Session
-from sourcesift.data import Block
 from sourcesift.errors import InputError, SourceSiftError
 from sourcesift.models import Result, SessionEvent
 from sourcesift.reports import save_report
@@ -38,20 +36,22 @@ from sourcesift.tui_panels import source_kind
 
 MAX_SESSIONS = 8
 MAX_BODY_BYTES = 1_048_576
-# Map imagery comes from two fixed services, fetched by this server so the page
-# itself contacts nothing else. Both ask for attribution, which the page shows.
-BASE_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+# Radar imagery comes from one fixed service. This server looks up the current
+# frame; the browser then loads map and radar tiles itself.
 RADAR_INDEX = "https://api.rainviewer.com/public/weather-maps.json"
-RADAR_TILES = "https://tilecache.rainviewer.com{path}/256/{z}/{x}/{y}/2/1_1.png"
-RADAR_MAX_ZOOM = 7
+RADAR_TILES = "https://tilecache.rainviewer.com{path}/256/{{z}}/{{x}}/{{y}}/2/1_1.png"
 RADAR_SECONDS = 300
-BASE_SECONDS = 86400
-MAX_TILES = 600
+_MAPS = "https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com"
+_RADAR = "https://tilecache.rainviewer.com"
 _HEADERS = {
     "Cache-Control": "no-store",
-    # No inline script or style, no remote content, and no framing by other pages.
-    # Map tiles are fetched with the token and shown from blob: URLs.
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; "
+    # No inline script, no framing by other pages, and no remote content except
+    # map and radar tiles from the hosts named here. The chart library sets
+    # element styles and runs its map renderer in a worker made from a blob.
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; worker-src blob:; child-src blob:; "
+    f"img-src 'self' data: blob: {_MAPS} {_RADAR}; "
+    f"connect-src 'self' {_MAPS} {_RADAR}; "
     "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
@@ -147,12 +147,7 @@ class Api:
         self.save = save
         self.resume = resume
         self.sessions: dict[str, Session] = {}
-        # Refresh key -> (monotonic time, block), to enforce each source's interval.
-        self.refreshed: dict[str, tuple[float, dict[str, Any]]] = {}
-        self.tiles: dict[tuple[str, int, int, int], tuple[float, bytes]] = {}
         self.radar: tuple[float, str] | None = None
-        # The map tile service asks clients to keep to two connections.
-        self.tile_gate = asyncio.Semaphore(2)
 
     async def _body(self, request: Request) -> dict[str, Any]:
         try:
@@ -265,77 +260,19 @@ class Api:
         path = save_report(prompt, result, session.settings.reports.directory)
         return JSONResponse({"path": str(path)})
 
-    async def refresh(self, request: Request) -> Response:
-        try:
-            block = Block.model_validate((await self._body(request)).get("block"))
-        except ValidationError:
-            raise InputError("That is not a visual this server produced.") from None
-        data_source = self.core.toolkit.sources.get(block.source_id)
-        interval = data_source.refresh_seconds if data_source else None
-        if interval is None:
-            raise InputError("This visual does not update.")
-        key = json.dumps(
-            [block.source_id, block.widget, block.params, block.options, block.window],
-            sort_keys=True,
-        )
-        cached = self.refreshed.get(key)
-        if cached is not None and time.monotonic() - cached[0] < interval:
-            return JSONResponse(cached[1])
-        fresh = await self.core.refresh(block)
-        payload = {
-            "block": fresh.model_dump(mode="json"),
-            "refreshed_at": time.time(),
-        }
-        if len(self.refreshed) >= 64:
-            self.refreshed.pop(next(iter(self.refreshed)))
-        self.refreshed[key] = (time.monotonic(), payload)
-        return JSONResponse(payload)
-
-    async def _fetch(self, url: str) -> tuple[bytes, str]:
-        try:
-            async with self.tile_gate, Fetcher(self.core.settings.limits) as fetcher:
-                page = await fetcher.get(url, robots=False)
-        except RetrievalError:
-            raise InputError("Map imagery is unavailable right now.") from None
-        return page.body, page.content_type
-
-    async def _radar_path(self) -> str:
-        """The newest radar frame, looked up at most every few minutes."""
+    async def radar_tiles(self, request: Request) -> Response:
+        """Where the newest radar frame's tiles are, looked up every few minutes."""
         if self.radar is None or time.monotonic() - self.radar[0] > RADAR_SECONDS:
-            body, _ = await self._fetch(RADAR_INDEX)
             try:
-                frames = json.loads(body)["radar"]["past"]
-                path = str(frames[-1]["path"])
-            except (ValueError, LookupError, TypeError):
+                async with Fetcher(self.core.settings.limits) as fetcher:
+                    page = await fetcher.get(RADAR_INDEX, robots=False)
+                path = str(json.loads(page.body)["radar"]["past"][-1]["path"])
+            except (RetrievalError, ValueError, LookupError, TypeError):
                 path = ""
             if not re.fullmatch(r"/v2/radar/[A-Za-z0-9_]{1,40}", path):
                 raise InputError("Radar imagery is unavailable right now.")
             self.radar = (time.monotonic(), path)
-        return self.radar[1]
-
-    async def tile(self, request: Request) -> Response:
-        layer = request.path_params["layer"]
-        z, x, y = (request.path_params[key] for key in ("z", "x", "y"))
-        limit = RADAR_MAX_ZOOM if layer == "radar" else 12
-        if layer not in {"base", "radar"} or not (
-            0 <= z <= limit and 0 <= x < 2**z and 0 <= y < 2**z
-        ):
-            raise InputError("There is no such map tile.")
-        key = (layer, z, x, y)
-        keep = RADAR_SECONDS if layer == "radar" else BASE_SECONDS
-        cached = self.tiles.get(key)
-        if cached is None or time.monotonic() - cached[0] > keep:
-            if layer == "radar":
-                url = RADAR_TILES.format(path=await self._radar_path(), z=z, x=x, y=y)
-            else:
-                url = BASE_TILES.format(z=z, x=x, y=y)
-            body, kind = await self._fetch(url)
-            if not body.startswith(b"\x89PNG") or not kind.startswith("image/png"):
-                raise InputError("Map imagery is unavailable right now.")
-            while len(self.tiles) >= MAX_TILES:
-                self.tiles.pop(next(iter(self.tiles)))
-            cached = self.tiles[key] = (time.monotonic(), body)
-        return Response(cached[1], media_type="image/png")
+        return JSONResponse({"tiles": RADAR_TILES.format(path=self.radar[1])})
 
 
 async def _input_error(request: Request, exc: Exception) -> Response:
@@ -362,8 +299,7 @@ def create_app(
             Route("/api/sessions/{id}/sources", api.get_sources, methods=["GET"]),
             Route("/api/sessions/{id}/sources", api.put_sources, methods=["PUT"]),
             Route("/api/sessions/{id}/report", api.report, methods=["POST"]),
-            Route("/api/blocks/refresh", api.refresh, methods=["POST"]),
-            Route("/api/tiles/{layer}/{z:int}/{x:int}/{y:int}", api.tile),
+            Route("/api/radar", api.radar_tiles),
             Mount("/", StaticFiles(directory=str(static), html=True)),
         ],
         middleware=[Middleware(Guard, hosts=frozenset(hosts), token=token)],

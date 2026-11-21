@@ -1,11 +1,10 @@
-import { el, formatValue, renderChart } from "/chart.js";
-import { renderMap } from "/map.js";
+import { el, formatTime, formatValue } from "/dom.js";
+import { renderFigure } from "/figure.js";
 
 const $ = (id) => document.getElementById(id);
 const transcript = $("transcript");
 const scroller = $("scroller");
-const tooltip = $("tooltip");
-const state = { token: "", session: null, busy: false, abort: null, references: new Map(), timers: [], sources: [], turns: 0 };
+const state = { token: "", session: null, busy: false, abort: null, references: new Map(), sources: [], turns: 0, radar: null };
 
 let toastTimer = 0;
 function toast(text) {
@@ -135,9 +134,10 @@ function createActivity(timed = false) {
 
 // ---- Visuals -----------------------------------------------------------------
 
-async function loadTile(layer, z, x, y) {
-  const response = await api(`/api/tiles/${layer}/${z}/${x}/${y}`);
-  return URL.createObjectURL(await response.blob());
+// The address of the current radar imagery, looked up once per page load.
+function radarTiles() {
+  state.radar ??= api("/api/radar").then((response) => response.json()).then((data) => data.tiles, () => null);
+  return state.radar;
 }
 
 function renderTable(body, view) {
@@ -148,7 +148,10 @@ function renderTable(body, view) {
   table.append(head);
   for (const row of view.rows) {
     const tr = el("tr");
-    row.forEach((cell, i) => tr.append(el("td", numeric[i] ? { class: "num" } : {}, typeof cell === "number" ? formatValue(cell, "", false) : cell ?? "—")));
+    row.forEach((cell, i) => {
+      const text = typeof cell === "number" ? formatValue(cell, "", false) : view.columns[i].kind === "time" ? formatTime(cell) : cell ?? "—";
+      tr.append(el("td", numeric[i] ? { class: "num" } : {}, text));
+    });
     table.append(tr);
   }
   const scroll = el("div", { class: "scroll" });
@@ -170,15 +173,36 @@ function renderStats(body, view) {
   body.replaceChildren(grid);
 }
 
-function drawView(body, view) {
-  if (view.type === "chart") renderChart(body, view, tooltip);
-  else if (view.type === "map") renderMap(body, view, loadTile);
-  else if (view.type === "table") renderTable(body, view);
-  else renderStats(body, view);
+async function drawFigure(body, block) {
+  const view = block.view;
+  const radar = view.overlay === "radar" ? await radarTiles() : null;
+  const plot = el("div");
+  body.replaceChildren(plot);
+  await renderFigure(plot, view, radar);
+  if (view.overlay === "radar" && !radar) body.append(el("p", { class: "muted small" }, "Radar imagery is unavailable right now."));
+  // The same values as a table, for reading exactly and for screen readers.
+  const shown = { columns: block.table.columns, rows: block.table.rows.slice(0, 200) };
+  const details = el("details", { class: "data-view" });
+  const count = block.table.rows.length;
+  details.append(el("summary", {}, count > 200 ? `View data (first 200 of ${count} rows)` : "View data"));
+  const holder = el("div");
+  renderTable(holder, shown);
+  details.append(holder);
+  body.append(details);
+}
+
+function drawView(body, block) {
+  if (block.view.type === "figure") drawFigure(body, block);
+  else if (block.view.type === "table") renderTable(body, block.view);
+  else renderStats(body, block.view);
 }
 
 // One card for all of an answer's visuals: figures first, then maps, charts, tables.
-const ORDER = { stat: 0, map: 1, chart: 2, table: 3 };
+function rank(view) {
+  if (view.type === "stat") return 0;
+  if (view.type === "table") return 3;
+  return view.data.some((trace) => trace.type === "scattermap") ? 1 : 2;
+}
 
 function renderArtifact(blocks) {
   const card = el("section", { class: "artifact" });
@@ -186,36 +210,13 @@ function renderArtifact(blocks) {
   const names = [...new Set(blocks.map((b) => state.sources.find((s) => s.id === b.source_id)?.name ?? b.source_id))];
   head.append(el("strong", {}, names.join(" · ")));
   for (const id of [...new Set(blocks.flatMap((b) => b.evidence_ids))].slice(0, 4)) head.append(el("button", { type: "button", class: "cite", "data-cite": id }, id.slice(1)));
-  head.append(el("span", { class: "grow" }));
   card.append(head);
-  const sections = [...blocks].sort((a, b) => ORDER[a.view.type] - ORDER[b.view.type]).map((block) => {
+  for (const block of [...blocks].sort((a, b) => rank(a.view) - rank(b.view))) {
     const section = el("div", { class: "widget" });
-    const title = el("h4", {}, block.view.title);
     const body = el("div");
-    section.append(title, body);
+    section.append(el("h4", {}, block.view.title), body);
     card.append(section);
-    drawView(body, block.view);
-    return { block, title, body };
-  });
-  const interval = Math.min(...blocks.map((b) => b.refresh_seconds ?? Infinity));
-  if (Number.isFinite(interval)) {
-    const live = el("span", { class: "live" }, "Live");
-    head.append(live);
-    state.timers.push(setInterval(async () => {
-      if (document.visibilityState !== "visible" || !card.isConnected) return;
-      try {
-        for (const section of sections.filter((s) => s.block.refresh_seconds)) {
-          // A map keeps its own position; only its data would change.
-          if (section.block.view.type === "map") continue;
-          const data = await (await api("/api/blocks/refresh", { method: "POST", body: { block: section.block } })).json();
-          section.title.textContent = data.block.view.title;
-          drawView(section.body, data.block.view);
-        }
-        live.textContent = `Live · updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-      } catch (error) {
-        live.textContent = `Live · ${error.message}`;
-      }
-    }, interval * 1000));
+    drawView(body, block);
   }
   return card;
 }

@@ -1,4 +1,4 @@
-"""The local web server: access rules, streamed turns, sources, reports, refresh."""
+"""The local web server: access rules, streamed turns, sources, reports, radar."""
 
 import json
 import sys
@@ -76,7 +76,7 @@ def test_only_this_launchs_page_can_use_the_api(served):
     assert page.status_code == 200 and "<title>SourceSift</title>" in page.text
     assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
     assert page.headers["x-content-type-options"] == "nosniff"
-    for path in ("/app.js", "/chart.js", "/app.css"):
+    for path in ("/app.js", "/figure.js", "/app.css"):
         assert client.get(path).status_code == 200
     # Another site's name resolving to this machine is refused, even for the page.
     assert client.get("/", headers={"Host": "evil.example"}).status_code == 403
@@ -130,7 +130,8 @@ def test_turn_streams_progress_then_a_result_with_visuals(served):
     turn = stream[-1]["turn"]
     assert turn["prompt"] == "front page"
     (block,) = turn["result"]["blocks"]
-    assert block["widget"] == "table" and block["refresh_seconds"] == 300
+    assert block["widget"] == "table" and block["source_id"] == "hacker-news"
+    assert block["table"]["name"] == "Hacker News front page"
     assert block["view"]["rows"][0][:2] == ["First", 10.0]
     # Markdown is rendered; raw HTML is escaped and images are not loaded.
     html = turn["answer_html"]
@@ -147,25 +148,6 @@ def test_turn_streams_progress_then_a_result_with_visuals(served):
     )
     saved = client.post(f"{base}/report", json={"turn": 0}, headers=AUTH).json()["path"]
     assert "front page" in Path(saved).read_text(encoding="utf-8")
-
-    # Refresh redraws from the source without the model, at most once per interval.
-    first = client.post("/api/blocks/refresh", json={"block": block}, headers=AUTH)
-    assert first.status_code == 200 and len(fetched) == 2
-    assert first.json()["block"]["view"]["rows"][1][0] == "Second"
-    second = client.post("/api/blocks/refresh", json={"block": block}, headers=AUTH)
-    assert second.json() == first.json() and len(fetched) == 2
-    tampered = block | {
-        "view": {"type": "table", "title": "x", "columns": [], "rows": []}
-    }
-    bad = client.post("/api/blocks/refresh", json={"block": tampered}, headers=AUTH)
-    assert bad.status_code == 400
-    static = block | {"source_id": "us-treasury", "params": {"dataset": "debt"}}
-    assert (
-        "does not update"
-        in client.post(
-            "/api/blocks/refresh", json={"block": static}, headers=AUTH
-        ).json()["error"]
-    )
 
 
 def test_sources_can_be_limited_for_one_conversation(served):
@@ -192,57 +174,44 @@ def test_sources_can_be_limited_for_one_conversation(served):
     assert all(source["enabled"] for source in other["sources"])
 
 
-def test_map_tiles_are_fetched_by_the_server_and_cached(monkeypatch, served):
+def test_radar_address_is_looked_up_by_the_server_and_cached(monkeypatch, served):
     client, _ = served
     seen = []
-    png = b"\x89PNG\r\n\x1a\n" + b"0" * 20
+    frames = {"radar": {"past": [{"path": "/v2/radar/old"}, {"path": "/v2/radar/ab1"}]}}
 
     async def get(self, url, *, robots=True):
         seen.append(url)
         assert robots is False
-        if url.endswith("weather-maps.json"):
-            body = {
-                "radar": {
-                    "past": [{"path": "/v2/radar/old"}, {"path": "/v2/radar/abc123"}]
-                }
-            }
-            return Page(url, url, json.dumps(body).encode(), "application/json")
-        if url.endswith("/9/9.png"):
-            return Page(url, url, b"<html>", "text/html")
-        return Page(url, url, png, "image/png")
+        return Page(url, url, json.dumps(frames).encode(), "application/json")
 
     monkeypatch.setattr(Fetcher, "get", get)
-    assert client.get("/api/tiles/base/7/32/47").status_code == 403
-    tile = client.get("/api/tiles/base/7/32/47", headers=AUTH)
-    assert tile.status_code == 200 and tile.content == png
-    assert tile.headers["content-type"] == "image/png"
-    assert client.get("/api/tiles/base/7/32/47", headers=AUTH).content == png
-    assert seen == ["https://tile.openstreetmap.org/7/32/47.png"]
+    assert client.get("/api/radar").status_code == 403
+    # The newest frame, as a tile address the map fills in itself.
+    expected = "https://tilecache.rainviewer.com/v2/radar/ab1/256/{z}/{x}/{y}/2/1_1.png"
+    assert client.get("/api/radar", headers=AUTH).json() == {"tiles": expected}
+    assert client.get("/api/radar", headers=AUTH).json() == {"tiles": expected}
+    assert seen == ["https://api.rainviewer.com/public/weather-maps.json"]
 
-    radar = client.get("/api/tiles/radar/5/8/11", headers=AUTH)
-    assert radar.status_code == 200
-    # The newest frame is used, from the fixed tile host.
-    assert (
-        seen[-1]
-        == "https://tilecache.rainviewer.com/v2/radar/abc123/256/5/8/11/2/1_1.png"
-    )
-    client.get("/api/tiles/radar/5/8/12", headers=AUTH)
-    assert sum(url.endswith("weather-maps.json") for url in seen) == 1
+    # The page may load map and radar tiles from the named hosts and nowhere else.
+    policy = client.get("/").headers["content-security-policy"]
+    assert "script-src 'self';" in policy and "worker-src blob:" in policy
+    assert "https://tilecache.rainviewer.com" in policy
+    assert "https://*.basemaps.cartocdn.com" in policy
+    for path in ("/figure.js", "/dom.js", "/vendor/plotly.min.js"):
+        assert client.get(path).status_code == 200
+    assert client.get("/map.js").status_code == 404
 
-    count = len(seen)
-    for path in (
-        "radar/8/1/1",
-        "base/13/1/1",
-        "base/3/8/0",
-        "other/3/1/1",
-        "base/4/9/9",
-    ):
-        assert client.get(f"/api/tiles/{path}", headers=AUTH).status_code == 400
-    assert (
-        len(seen) == count + 1
-    )  # only the last was requested, and it was not an image
-    assert "blob:" in client.get("/").headers["content-security-policy"]
-    assert client.get("/map.js").status_code == 200
+
+def test_radar_failure_is_reported_not_guessed(monkeypatch, served):
+    client, _ = served
+
+    async def get(self, url, *, robots=True):
+        body = {"radar": {"past": [{"path": "https://evil.test/x"}]}}
+        return Page(url, url, json.dumps(body).encode(), "application/json")
+
+    monkeypatch.setattr(Fetcher, "get", get)
+    reply = client.get("/api/radar", headers=AUTH)
+    assert reply.status_code == 400 and "unavailable" in reply.json()["error"]
 
 
 def test_markdown_tables_render_and_links_keep_safe_schemes():

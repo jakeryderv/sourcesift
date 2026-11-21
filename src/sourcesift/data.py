@@ -1,12 +1,11 @@
-"""Typed data shared by sources and widgets, and what a page can draw.
+"""Tables that sources return, and what a page can draw from them.
 
-A source returns *shapes* (``TimeSeries``, ``Table``, ``Stats``, ``GeoPoints``). A
-widget accepts one shape and returns a *view* (``Chart``, ``TableView``,
-``StatView``, ``MapView``), one of the few things an interface knows how to draw. Sources and widgets never refer to each
-other, so any widget can show any source's data of the shape it accepts.
+A source returns one or more ``Table`` values. A widget turns one table and
+typed options into a *view*: a ``Figure`` (a Plotly figure), a ``TableView``, or
+a ``StatView``. Sources and widgets never refer to each other, so any widget can
+show any source's table whose columns fit its options.
 """
 
-from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import Field, JsonValue, model_validator
@@ -14,51 +13,72 @@ from pydantic import Field, JsonValue, model_validator
 from sourcesift.contract import Contract
 
 Cell = int | float | str | None
-
-
-class Point(Contract):
-    """One value at a time; daily values use midnight UTC."""
-
-    at: datetime
-    value: float = Field(allow_inf_nan=False)
-
-
-class Series(Contract):
-    """One named line of values in time order."""
-
-    name: str = Field(min_length=1, max_length=120)
-    points: tuple[Point, ...] = Field(max_length=5000)
-
-
-class TimeSeries(Contract):
-    """Shape: one or more series over time that share a unit."""
-
-    name: str = Field(min_length=1, max_length=120)
-    unit: str = Field(default="", max_length=24)
-    # IANA zone in which to label times, such as the place a forecast is for.
-    timezone: str = Field(default="UTC", max_length=64)
-    series: tuple[Series, ...] = Field(min_length=1, max_length=12)
+ColumnKind = Literal["text", "number", "time"]
 
 
 class Column(Contract):
-    """A table column; ``unit`` applies to every value in it."""
+    """A table column; ``unit`` applies to every value in it.
+
+    ``kind`` is worked out from the values unless given. Declare ``"time"`` for
+    ISO 8601 dates or date-times, written in the zone they should be read in.
+    """
 
     name: str = Field(min_length=1, max_length=80)
     unit: str = Field(default="", max_length=24)
+    kind: ColumnKind | None = None
 
 
 class Table(Contract):
-    """Shape: rows of values under named columns."""
+    """Rows of values under uniquely named columns."""
 
     name: str = Field(min_length=1, max_length=120)
     columns: tuple[Column, ...] = Field(min_length=1, max_length=12)
-    rows: tuple[tuple[Cell, ...], ...] = Field(max_length=500)
+    rows: tuple[tuple[Cell, ...], ...] = Field(max_length=5000)
 
     @model_validator(mode="after")
     def rows_match_columns(self) -> "Table":
         if any(len(row) != len(self.columns) for row in self.rows):
             raise ValueError("every row needs one value per column")
+        if len({column.name for column in self.columns}) != len(self.columns):
+            raise ValueError("column names must be unique")
         return self
+
+    def index(self, name: str) -> int:
+        """Position of the named column; ``ValueError`` names the ones that exist."""
+        for position, column in enumerate(self.columns):
+            if column.name == name:
+                return position
+        known = ", ".join(column.name for column in self.columns)
+        raise ValueError(f"There is no column {name!r}. Columns: {known}.")
+
+    def kind(self, name: str) -> ColumnKind:
+        """The column's declared kind, or number when every value present is one."""
+        position = self.index(name)
+        declared = self.columns[position].kind
+        if declared is not None:
+            return declared
+        cells = [row[position] for row in self.rows if row[position] is not None]
+        numeric = cells and all(
+            isinstance(cell, int | float) and not isinstance(cell, bool)
+            for cell in cells
+        )
+        return "number" if numeric else "text"
+
+    def values(self, name: str) -> list[Cell]:
+        position = self.index(name)
+        return [row[position] for row in self.rows]
+
+    def describe(self) -> dict[str, JsonValue]:
+        """What the model needs in order to choose a widget and its columns."""
+        return {
+            "table": self.name,
+            "rows": len(self.rows),
+            "columns": [
+                {"name": c.name, "kind": self.kind(c.name)}
+                | ({"unit": c.unit} if c.unit else {})
+                for c in self.columns
+            ],
+        }
 
 
 class Stat(Contract):
@@ -70,40 +90,18 @@ class Stat(Contract):
     change: float | None = None
 
 
-class Stats(Contract):
-    """Shape: a few labeled headline values."""
+class Figure(Contract):
+    """View: a Plotly figure, as the ``data`` and ``layout`` Plotly.js accepts.
 
-    name: str = Field(min_length=1, max_length=120)
-    items: tuple[Stat, ...] = Field(min_length=1, max_length=12)
+    The interface applies its own colours and fonts. ``overlay`` asks it to add a
+    layer it knows how to fetch; only maps use it.
+    """
 
-
-class GeoPoint(Contract):
-    """A place, with an optional value to show beside its label."""
-
-    label: str = Field(min_length=1, max_length=80)
-    latitude: float = Field(ge=-85, le=85)
-    longitude: float = Field(ge=-180, le=180)
-    value: float | None = Field(default=None, allow_inf_nan=False)
-    unit: str = Field(default="", max_length=24)
-
-
-class GeoPoints(Contract):
-    """Shape: one or more located items."""
-
-    name: str = Field(min_length=1, max_length=120)
-    points: tuple[GeoPoint, ...] = Field(min_length=1, max_length=50)
-
-
-class Chart(Contract):
-    """View: lines or bars over time."""
-
-    type: Literal["chart"] = "chart"
+    type: Literal["figure"] = "figure"
     title: str = Field(max_length=120)
-    kind: Literal["line", "bar"] = "line"
-    unit: str = Field(default="", max_length=24)
-    timezone: str = Field(default="UTC", max_length=64)
-    y_log: bool = False
-    series: tuple[Series, ...] = Field(min_length=1, max_length=12)
+    data: tuple[dict[str, JsonValue], ...] = Field(min_length=1, max_length=24)
+    layout: dict[str, JsonValue] = Field(default_factory=dict)
+    overlay: Literal["none", "radar"] = "none"
 
 
 class TableView(Contract):
@@ -123,35 +121,20 @@ class StatView(Contract):
     items: tuple[Stat, ...] = Field(min_length=1, max_length=12)
 
 
-class MapView(Contract):
-    """View: markers on a map, optionally under a live precipitation radar layer."""
-
-    type: Literal["map"] = "map"
-    title: str = Field(max_length=120)
-    latitude: float = Field(ge=-85, le=85)
-    longitude: float = Field(ge=-180, le=180)
-    zoom: int = Field(default=7, ge=2, le=12)
-    markers: tuple[GeoPoint, ...] = Field(max_length=50)
-    overlay: Literal["none", "radar"] = "none"
-
-
-View = Chart | TableView | StatView | MapView
-VIEWS = (Chart, TableView, StatView, MapView)
+View = Figure | TableView | StatView
+VIEWS = (Figure, TableView, StatView)
 
 
 class Block(Contract):
-    """A visual in an answer: a view plus where its data came from.
+    """A visual in an answer: a view, and the table and evidence it came from.
 
     The view holds only values a source returned; the model chose the widget and
-    its options. ``source_id`` and ``params`` are enough to fetch the data again
-    without the model, at most every ``refresh_seconds`` when that is set.
+    its options. It is a snapshot of the data when it was retrieved.
     """
 
     widget: str
     evidence_ids: tuple[str, ...]
     source_id: str
-    params: dict[str, JsonValue]
     options: dict[str, JsonValue]
-    window: Literal["recent", "today", "this_week", "any"] = "recent"
-    refresh_seconds: int | None = None
+    table: Table
     view: Annotated[View, Field(discriminator="type")]

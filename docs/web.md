@@ -32,19 +32,17 @@ The page opens in your default browser. The server stops with Ctrl+C.
   answer arrives the list folds into one line, such as "3 steps · 10s", that you
   can reopen.
 - **Visuals.** Everything the model chose to [show](research.md#visuals) is
-  grouped in one card above the answer: headline figures, then a map you can drag
-  and zoom (optionally under live precipitation radar), a line chart with a hover
-  and keyboard readout and a table of the same values, and tables. The card names
-  the source and the evidence the visuals were drawn from.
+  grouped in one card above the answer: headline figures, maps, charts, and
+  tables. Charts and maps are interactive Plotly figures: hover for values, drag
+  to zoom a chart, click a legend entry to hide a series, drag and scroll a map.
+  "View data" under each one lists the rows it was drawn from. The card names the
+  source and the evidence the visuals came from. A visual shows the data as it
+  was when retrieved; ask again for newer data.
 - **Answer.** Below the card is a brief summary. When visuals are shown, the
   model is told not to repeat them as Markdown tables or lists.
 - **Citations.** Each numbered chip opens the Evidence panel at that reference,
   with its publisher, kind, dates, and any limitations. The line under an answer
   ("2 sources · 1 note") expands to the same references and the answer's notes.
-- **Live data.** A card from a source that updates (weather, the Hacker News
-  table) is marked Live and re-fetched on that source's interval while the page is
-  visible. This asks the source directly; the model is not called and no tokens
-  are spent. A map keeps the position you left it in.
 - **Sources.** Browse the catalog and choose which sources this chat may use.
 - **Copy and Save report** under each answer; a report is a Markdown
   [file](cli.md).
@@ -64,16 +62,17 @@ The server is for one person on one computer.
 - Requests must name the server's own address and, when the browser reports where
   a request came from, that must be the page itself. This stops other websites
   open in your browser from using the server.
-- The page loads no outside scripts, styles, fonts, or images. Map imagery is
-  fetched by the server from OpenStreetMap, and radar from RainViewer, so those
-  two services see which map areas are viewed, but not your browser. Raw HTML and images
-  in a model's answer are never rendered.
+- The page loads no outside scripts, styles, or fonts; the chart library ships
+  with SourceSift. The one exception is a map: your browser then loads map tiles
+  from CARTO and, with the radar layer, radar images from RainViewer, so those
+  services see your network address and the area viewed. Raw HTML and images in a
+  model's answer are never rendered.
 - Prompts, attached files, and retrieved text still go to the configured model
   through OpenRouter, as in the terminal.
 
 ## Not yet in the page
 
 Model and reasoning choices are set when starting the server, files are attached
-with `--file` rather than uploaded, and radar is the latest frame only, with no
-animation or forecast. The terminal chat
+with `--file` rather than uploaded, and radar is the latest frame only, shown at
+regional zoom and wider, with no animation or forecast. The terminal chat
 remains available as `ssift chat`.

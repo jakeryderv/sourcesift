@@ -364,15 +364,13 @@ and completion criteria belong in [roadmap.md](roadmap.md).
 
 ## 11. Proposal: Web App, Typed Data, and Display Blocks
 
-**Status: steps 1 to 3 of the order of work are implemented**, including the
-weather source, `GeoPoints`, the `map` view, and a per-source robots exemption
-for declared API hosts. Step 2 is the
-[web app](web.md); it differs from the route table below in small ways (a refresh
-route keyed by visual, and no file upload yet). **Step 1** (typed sources, the
-`TimeSeries`, `Table`, and `Stats` shapes, three widgets, the `show` tool, and
-`Result.blocks`; see [visuals](research.md#visuals) and the
-[SDK](sdk.md#data-sources-and-widgets)). `GeoPoints` and the `map` primitive wait
-for the weather source that needs them, the web app is not built, and built-ins are
+**Status: steps 1 to 3 of the order of work are implemented, and the data layer
+has since been simplified.** Sources now return plain tables instead of several
+typed shapes, the built-in widgets build [Plotly](https://plotly.com/javascript/)
+figures from named columns, and a visual is a snapshot with no automatic refresh,
+so the shapes, `refresh_seconds`, and the refresh and tile routes described below
+no longer exist. The [research](research.md#visuals) and [SDK](sdk.md) guides
+describe what is built. Step 2 is the [web app](web.md). Built-ins are
 registered by `app.register(...)` rather than an extension file. The rest of this
 section is the proposal as agreed. It
 would make a local web app the main interface, keep `ssift ask`, retire the Textual

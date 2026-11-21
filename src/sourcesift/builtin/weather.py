@@ -8,19 +8,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field
 
 from sourcesift.builtin.common import json_object, number, one_line
+from sourcesift.builtin.widgets import with_unit
 from sourcesift.contract import Contract
-from sourcesift.data import (
-    Cell,
-    Column,
-    GeoPoint,
-    GeoPoints,
-    Point,
-    Series,
-    Stat,
-    Stats,
-    Table,
-    TimeSeries,
-)
+from sourcesift.data import Cell, Column, Table
 from sourcesift.extend import FetchContext, Record, SourceResult, source
 from sourcesift.retrieval.urls import RetrievalError
 
@@ -91,8 +81,6 @@ def _when(value: object) -> datetime | None:
     topics=("weather", "forecast"),
     geography="Worldwide",
     params=WeatherParams,
-    returns=(Stats, TimeSeries, Table, GeoPoints),
-    refresh_seconds=900,
     api_hosts=("api.open-meteo.com", "geocoding-api.open-meteo.com"),
 )
 async def weather(params: WeatherParams, context: FetchContext) -> SourceResult:
@@ -167,7 +155,8 @@ async def weather(params: WeatherParams, context: FetchContext) -> SourceResult:
     if temperature is None or observed is None:
         raise RetrievalError("The weather service returned no current conditions.")
 
-    days: list[tuple[Cell, ...]] = []
+    # (date, label for text, conditions, high, low, chance of precipitation)
+    days: list[tuple[str, str, str, float | None, float | None, float | None]] = []
     for index, raw in enumerate(_list(daily, "time")):
         day = _when(raw)
         if day is None:
@@ -177,9 +166,11 @@ async def weather(params: WeatherParams, context: FetchContext) -> SourceResult:
             values = _list(daily, key)
             return values[index] if index < len(values) else None
 
+        local_day = day.astimezone(zone)
         days.append(
             (
-                day.astimezone(zone).strftime("%a %b %d"),
+                local_day.date().isoformat(),
+                local_day.strftime("%a %b %d"),
                 _condition(at("weather_code")),
                 number(at("temperature_2m_max")),
                 number(at("temperature_2m_min")),
@@ -187,40 +178,41 @@ async def weather(params: WeatherParams, context: FetchContext) -> SourceResult:
             )
         )
 
-    def hours(key: str) -> tuple[Point, ...]:
-        return tuple(
-            Point(at=moment, value=value)
-            for raw, item in zip(
-                _list(hourly, "time"), _list(hourly, key), strict=False
-            )
-            if (moment := _when(raw)) is not None
-            and (value := number(item)) is not None
+    # Times are written in the place's own zone, which is how a chart labels them.
+    hours: list[tuple[Cell, ...]] = [
+        (
+            moment.astimezone(zone).replace(tzinfo=None).isoformat(timespec="minutes"),
+            number(warm),
+            number(felt),
         )
-
-    figures = [
-        Stat(label="Temperature", value=temperature, unit=degrees),
-        *(
-            Stat(label=text, value=value, unit=unit)
-            for text, key, unit in (
-                ("Feels like", "apparent_temperature", degrees),
-                ("Humidity", "relative_humidity_2m", "%"),
-                ("Wind", "wind_speed_10m", speed),
-            )
-            if (value := number(current.get(key))) is not None
-        ),
+        for raw, warm, felt in zip(
+            _list(hourly, "time"),
+            _list(hourly, "temperature_2m"),
+            _list(hourly, "apparent_temperature"),
+            strict=False,
+        )
+        if (moment := _when(raw)) is not None
     ]
-    if days and days[0][2] is not None and days[0][3] is not None:
-        figures += [
-            Stat(label="High today", value=days[0][2], unit=degrees),
-            Stat(label="Low today", value=days[0][3], unit=degrees),
+
+    measures: list[tuple[str, float, str]] = [("Temperature", temperature, degrees)]
+    measures += [
+        (text, value, unit)
+        for text, key, unit in (
+            ("Feels like", "apparent_temperature", degrees),
+            ("Humidity", "relative_humidity_2m", "%"),
+            ("Wind", "wind_speed_10m", speed),
+        )
+        if (value := number(current.get(key))) is not None
+    ]
+    if days and days[0][3] is not None and days[0][4] is not None:
+        measures += [
+            ("High today", days[0][3], degrees),
+            ("Low today", days[0][4], degrees),
         ]
     condition = _condition(current.get("weather_code"))
     local = observed.astimezone(zone)
     now = "; ".join(
-        f"{item.label}: {item.value:g} {item.unit}".replace(" °", "°").replace(
-            " %", "%"
-        )
-        for item in figures
+        f"{text}: {with_unit(value, unit)}" for text, value, unit in measures
     )
     header = (
         f"Weather for {label} ({latitude:.2f}, {longitude:.2f}), from Open-Meteo "
@@ -231,57 +223,55 @@ async def weather(params: WeatherParams, context: FetchContext) -> SourceResult:
         f"Now: {condition}. {now}.",
         "Daily forecast (high / low, chance of precipitation):",
     ]
-    for day, text, high, low, chance in days:
+    for _, day_label, text, high, low, chance in days:
         shown = [value if value is not None else "?" for value in (high, low, chance)]
         lines.append(
-            f"{day}: {text}, {shown[0]}{degrees} / {shown[1]}{degrees}, {shown[2]}%"
+            f"{day_label}: {text}, {shown[0]}{degrees} / {shown[1]}{degrees}, "
+            f"{shown[2]}%"
         )
     lines.append("Model forecast data, not an official warning or alert.")
-    shapes: list[Contract] = [
-        Stats(name=f"Weather in {label}: {condition}"[:120], items=tuple(figures)),
-        GeoPoints(
-            name=f"Weather in {label}"[:120],
-            points=(
-                GeoPoint(
-                    label=label,
-                    latitude=latitude,
-                    longitude=longitude,
-                    value=temperature,
-                    unit=degrees,
-                ),
+    tables = [
+        Table(
+            name=f"Weather now in {label}: {condition}"[:120],
+            columns=tuple(Column(name=text, unit=unit) for text, _, unit in measures),
+            rows=(tuple(value for _, value, _ in measures),),
+        ),
+        Table(
+            name=f"Location of {label}"[:120],
+            columns=(
+                Column(name="Place"),
+                Column(name="Latitude"),
+                Column(name="Longitude"),
+                Column(name="Temperature", unit=degrees),
             ),
+            rows=((label, latitude, longitude, temperature),),
         ),
     ]
-    series = tuple(
-        Series(name=text, points=points)
-        for text, key in (
-            ("Temperature", "temperature_2m"),
-            ("Feels like", "apparent_temperature"),
-        )
-        if (points := hours(key))
-    )
-    if series:
-        shapes.append(
-            TimeSeries(
+    if hours:
+        tables.append(
+            Table(
                 name=f"Hourly temperature in {label}"[:120],
-                unit=degrees,
-                timezone=zone.key,
-                series=series,
+                columns=(
+                    Column(name="Time", kind="time"),
+                    Column(name="Temperature", unit=degrees),
+                    Column(name="Feels like", unit=degrees),
+                ),
+                rows=tuple(hours),
             )
         )
     if days:
-        shapes.append(
+        tables.append(
             Table(
-                name=f"Forecast for {label}"[:120],
+                name=f"Daily forecast for {label}"[:120],
                 columns=(
-                    Column(name="Day"),
+                    Column(name="Date", kind="time"),
                     Column(name="Conditions"),
                     Column(name="High", unit=degrees),
                     Column(name="Low", unit=degrees),
                     Column(name="Chance of precipitation", unit="%"),
                 ),
-                rows=tuple(days),
+                rows=tuple((d[0], *d[2:]) for d in days),
             )
         )
     title = f"Weather for {label} ({local:%Y-%m-%d %H:%M} local)"
-    return SourceResult([Record(title, page.url, "\n".join(lines), page)], shapes)
+    return SourceResult([Record(title, page.url, "\n".join(lines), page)], tables)

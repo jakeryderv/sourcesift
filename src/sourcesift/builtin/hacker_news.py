@@ -35,8 +35,6 @@ class HackerNewsParams(Contract):
     topics=("technology", "software", "startups"),
     geography="International technology community",
     params=HackerNewsParams,
-    returns=(Table,),
-    refresh_seconds=300,
 )
 async def hacker_news(params: HackerNewsParams, context: FetchContext) -> SourceResult:
     """Current front-page stories, or stories matching a query within the window."""

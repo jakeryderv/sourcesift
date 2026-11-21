@@ -1,6 +1,6 @@
 """Official figures from the US Treasury Fiscal Data API."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import date, timedelta
 from typing import Literal
 from urllib.parse import urlencode
 
@@ -8,7 +8,7 @@ from pydantic import Field
 
 from sourcesift.builtin.common import json_object, number, one_line
 from sourcesift.contract import Contract
-from sourcesift.data import Column, Point, Series, Stat, Stats, Table, TimeSeries
+from sourcesift.data import Cell, Column, Table
 from sourcesift.extend import FetchContext, Record, SourceResult, source
 from sourcesift.retrieval.http import Page
 from sourcesift.retrieval.urls import RetrievalError
@@ -69,11 +69,9 @@ def _rows(page: Page) -> tuple[list[dict[str, object]], dict[str, object]]:
     return rows, labels if isinstance(labels, dict) else {}
 
 
-def _day(row: dict[str, object]) -> datetime | None:
+def _day(row: dict[str, object]) -> str | None:
     try:
-        return datetime.fromisoformat(one_line(row.get("record_date"), 10)).replace(
-            tzinfo=UTC
-        )
+        return date.fromisoformat(one_line(row.get("record_date"), 10)).isoformat()
     except ValueError:
         return None
 
@@ -94,25 +92,21 @@ async def _debt(params: TreasuryParams, context: FetchContext) -> SourceResult:
     )
     rows, _ = _rows(page)
     latest = one_line(rows[0].get("record_date"), 20) or "unknown date"
-    series = []
-    stats = []
-    for field, label in _DEBT.items():
-        points = [
-            Point(at=day, value=value)
-            for row in reversed(rows)
-            if (day := _day(row)) is not None
-            and (value := number(row.get(field))) is not None
-        ]
-        if not points:
-            continue
-        series.append(Series(name=label, points=tuple(points)))
-        change = points[-1].value - points[-2].value if len(points) > 1 else None
-        stats.append(
-            Stat(label=label, value=points[-1].value, unit="USD", change=change)
-        )
-    if not series:
+    fields = [
+        (field, label)
+        for field, label in _DEBT.items()
+        if any(number(row.get(field)) is not None for row in rows)
+    ]
+    history: list[tuple[Cell, ...]] = [
+        (day, *(number(row.get(field)) for field, _ in fields))
+        for row in reversed(rows)
+        if (day := _day(row)) is not None
+    ]
+    # The headline column must have a value at both ends to describe the change.
+    history = [row for row in history if row[1] is not None] if fields else []
+    if not history:
         raise RetrievalError("The dataset returned no usable values.")
-    total = series[0].points
+    first, last = history[0], history[-1]
     lines = [
         f"{one_line(row.get('record_date'), 20)}: "
         + "; ".join(
@@ -124,20 +118,23 @@ async def _debt(params: TreasuryParams, context: FetchContext) -> SourceResult:
         "Debt to the Penny, from the US Treasury Fiscal Data API. Amounts are as "
         f"published, in US dollars. Latest record date: {latest}.\n"
         + "\n".join(lines)
-        + f"\nHistory retrieved: {len(total)} daily records from "
-        f"{total[0].at.date().isoformat()} ({total[0].value:.2f}) to "
-        f"{total[-1].at.date().isoformat()} ({total[-1].value:.2f}); "
-        f"{series[0].name.lower()} changed by {total[-1].value - total[0].value:.2f} "
+        + f"\nHistory retrieved: {len(history)} daily records from "
+        f"{first[0]} ({first[1]:.2f}) to {last[0]} ({last[1]:.2f}); "
+        f"{fields[0][1].lower()} changed by {last[1] - first[1]:.2f} "  # ty: ignore[unsupported-operator]
         "over that period."
     )
     # A record date is a reporting period, not a publication time, so the record
     # carries no publication date and is not filtered by the request's window.
-    return SourceResult(
-        [Record(f"Debt to the Penny (as of {latest})", page.url, text, page)],
-        (
-            TimeSeries(name="US public debt", unit="USD", series=tuple(series)),
-            Stats(name=f"US public debt as of {latest}", items=tuple(stats)),
+    table = Table(
+        name=f"US public debt, {first[0]} to {last[0]}",
+        columns=(
+            Column(name="Date", kind="time"),
+            *(Column(name=label, unit="USD") for _, label in fields),
         ),
+        rows=tuple(history),
+    )
+    return SourceResult(
+        [Record(f"Debt to the Penny (as of {latest})", page.url, text, page)], (table,)
     )
 
 
@@ -152,10 +149,9 @@ async def _debt(params: TreasuryParams, context: FetchContext) -> SourceResult:
     topics=("economics", "finance", "government-data"),
     geography="United States",
     params=TreasuryParams,
-    returns=(TimeSeries, Stats, Table),
 )
 async def us_treasury(params: TreasuryParams, context: FetchContext) -> SourceResult:
-    """One Treasury dataset as evidence text plus a series, figures, or a table."""
+    """One Treasury dataset as evidence text plus a table of the same values."""
     if params.dataset == "debt":
         return await _debt(params, context)
     title, path, size, (name, value, unit) = _TABLES[params.dataset]

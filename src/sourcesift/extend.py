@@ -13,7 +13,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from sourcesift.contract import Contract
-from sourcesift.data import View
+from sourcesift.data import Table, View
 from sourcesift.errors import ConfigurationError
 from sourcesift.retrieval.http import Page
 from sourcesift.retrieval.urls import hostname
@@ -34,10 +34,10 @@ class Record:
 
 @dataclass(frozen=True)
 class SourceResult:
-    """One fetch: evidence to cite and, optionally, the same data as shapes."""
+    """One fetch: evidence to cite and, optionally, the same data as tables."""
 
     evidence: Sequence[Record]
-    data: Sequence[BaseModel] = ()
+    tables: Sequence[Table] = ()
 
 
 @dataclass(frozen=True)
@@ -51,7 +51,7 @@ class FetchContext:
 
 
 Fetch = Callable[[Any, FetchContext], Awaitable[SourceResult]]
-Render = Callable[[Any, Any], View]
+Render = Callable[[Table, Any], View]
 
 
 @dataclass(frozen=True)
@@ -60,9 +60,7 @@ class DataSource:
 
     source: Source
     params: type[BaseModel]
-    returns: tuple[type[BaseModel], ...]
     fetch: Fetch
-    refresh_seconds: int | None = None
     api_hosts: tuple[str, ...] = ()
 
     def bounded(
@@ -86,11 +84,14 @@ class DataSource:
 
 @dataclass(frozen=True)
 class Widget:
-    """A typed function from one data shape and options to a view."""
+    """A typed function from a table and options to a view.
+
+    ``render`` raises ``ValueError`` with a message for the model when the
+    options do not fit the table, such as a column that is not numeric.
+    """
 
     id: str
     description: str
-    accepts: type[BaseModel]
     options: type[BaseModel]
     render: Render
 
@@ -106,22 +107,17 @@ def source(
     website: str,
     description: str,
     params: type[BaseModel],
-    returns: tuple[type[BaseModel], ...] = (),
     topics: tuple[str, ...] = (),
     geography: str = "Unspecified",
     aliases: tuple[str, ...] = (),
-    refresh_seconds: int | None = None,
     api_hosts: tuple[str, ...] = (),
 ) -> Callable[[Fetch], DataSource]:
     """Turn ``async def fetch(params, context) -> SourceResult`` into a data source.
 
     ``params`` is validated before the function runs; its field descriptions are
-    what the model sees. ``refresh_seconds`` lets an interface re-fetch on a timer.
-    ``api_hosts`` names hosts of documented public APIs whose robots.txt is not
+    what the model sees. ``api_hosts`` names hosts of documented public APIs whose robots.txt is not
     consulted; list one only when the service's terms allow programmatic use.
     """
-    if refresh_seconds is not None and refresh_seconds < 1:
-        raise ConfigurationError("refresh_seconds must be positive.")
     entry = Source(
         id=id,
         name=name,
@@ -132,20 +128,20 @@ def source(
         aliases=aliases,
         capabilities=("query",),
     )
-    return lambda fetch: DataSource(
-        entry, params, returns, fetch, refresh_seconds, api_hosts
-    )
+    return lambda fetch: DataSource(entry, params, fetch, api_hosts)
 
 
 def widget(
     *,
     id: str,
     description: str,
-    accepts: type[BaseModel],
     options: type[BaseModel] = NoOptions,
 ) -> Callable[[Render], Widget]:
-    """Turn ``def render(data, options) -> View`` into a widget the model can choose."""
-    return lambda render: Widget(id, description, accepts, options, render)
+    """Turn ``def render(table, options) -> View`` into a widget the model can choose.
+
+    The description and the option fields' descriptions are what the model sees.
+    """
+    return lambda render: Widget(id, description, options, render)
 
 
 class Toolkit:
@@ -164,12 +160,3 @@ class Toolkit:
             if item.id in self.widgets:
                 raise ConfigurationError("Widget IDs must be unique.")
             self.widgets[item.id] = item
-
-    def fitting(self, shapes: Iterable[BaseModel]) -> list[str]:
-        """IDs of the widgets that accept at least one of these shapes."""
-        held = tuple(shapes)
-        return [
-            item.id
-            for item in self.widgets.values()
-            if any(isinstance(shape, item.accepts) for shape in held)
-        ]

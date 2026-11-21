@@ -96,19 +96,20 @@ below.
     model, they can do anything your program can.
 
 A data source is an async function with typed parameters. It returns evidence for
-the model to cite and, optionally, the same data as shapes (`TimeSeries`, `Table`,
-`Stats`, `GeoPoints`). A widget is a function from one shape and typed options to a view
-(`Chart`, `TableView`, `StatView`). Neither refers to the other, so any widget can
-show any source's data of the shape it accepts.
+the model to cite and, optionally, the same data as one or more `Table` values. A
+widget is a function from a table and typed options to a view: a `Figure` (any
+[Plotly](https://plotly.com/javascript/) figure, as plain `data` and `layout`), a
+`TableView`, or a `StatView`. Neither refers to the other, so any widget can show
+any source's table whose columns fit its options.
 
 ```python
 from pydantic import BaseModel, Field
 from sourcesift import (
+    Figure,
     Record,
     SourceResult,
     SourceSift,
-    Stats,
-    StatView,
+    Table,
     source,
     widget,
 )
@@ -122,35 +123,60 @@ class RepoParams(BaseModel):
     id="repo-stats",
     name="Repository stats",
     website="https://example.com/",
-    description="Open issue and pull request counts for one repository.",
+    description="Open issue and pull request counts by week for one repository.",
     params=RepoParams,
-    returns=(Stats,),
-    refresh_seconds=300,
 )
 async def repo_stats(params, context):
     page = await context.get(f"https://example.com/api/{params.repo}")
-    counts = parse(page.body)  # your parsing
-    figures = Stats(
-        name=params.repo,
-        items=[{"label": "Open issues", "value": counts.issues}],
+    weeks = parse(page.body)  # your parsing: [("2026-11-02", 41, 7), ...]
+    table = Table(
+        name=f"Open work in {params.repo}",
+        columns=[
+            {"name": "Week", "kind": "time"},
+            {"name": "Issues"},
+            {"name": "Pull requests"},
+        ],
+        rows=weeks,
     )
-    text = f"{params.repo} has {counts.issues} open issues."
-    return SourceResult([Record(params.repo, page.url, text, page)], [figures])
+    text = f"{params.repo} has {weeks[-1][1]} open issues."
+    return SourceResult([Record(params.repo, page.url, text, page)], [table])
 
 
-@widget(id="headline", description="The first figure, large.", accepts=Stats)
-def headline(data, options):
-    return StatView(title=data.name, items=data.items[:1])
+class GaugeOptions(BaseModel):
+    column: str = Field(description="Numeric column to show.")
+
+
+@widget(
+    id="gauge",
+    description="The latest value of one column as a dial.",
+    options=GaugeOptions,
+)
+def gauge(table, options):
+    if table.kind(options.column) != "number":
+        raise ValueError(f"Column {options.column!r} is not numeric.")
+    value = table.values(options.column)[-1]
+    return Figure(
+        title=table.name,
+        data=[{"type": "indicator", "mode": "gauge+number", "value": value}],
+    )
 
 
 app = SourceSift()
 app.register(repo_stats)
-app.register(headline)
-result = app.run_sync("How many open issues does example/project have? Show it.")
+app.register(gauge)
+result = app.run_sync("How many open issues does example/project have? Chart it.")
 for block in result.blocks:
     print(block.widget, block.view.title, block.evidence_ids)
 ```
 
+- With no widget of your own, the built-in `chart`, `table`, `stats`, and `map`
+  widgets already work on any table a source returns.
+- A column's kind (`text`, `number`, `time`) is worked out from its values. Declare
+  `kind="time"` for ISO 8601 dates or date-times, and give a `unit` where one
+  applies; charts use it for axis labels.
+- A widget raises `ValueError` with a short message when its options do not fit
+  the table. The message goes to the model, which can correct its request.
+- A figure carries structure only. The page applies its own colours and fonts.
 - `context.get(url)` is the only network access a source is given. It applies the
   same address checks, robots rules, size limits, and request budget as feeds.
   `context.now`, `context.since`, and `context.limit` carry the clock, the start of
@@ -161,8 +187,8 @@ for block in result.blocks:
   Use it for a documented public API whose terms allow programmatic use.
 - Raise `sourcesift.retrieval.urls.RetrievalError` for a failure the user should
   see as a note.
-- A `Block` records the source ID and parameters, so an interface can fetch the
-  same data again later; `refresh_seconds` says how often it may.
+- A `Block` holds the view, the options the model chose, and the table it was
+  drawn from.
 
 Loading extension files from configuration and discovering installed plugins are
 planned; see the [design](design.md#11-proposal-web-app-typed-data-and-display-blocks).

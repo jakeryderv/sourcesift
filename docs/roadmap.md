@@ -203,7 +203,8 @@ prototype while keeping the Python SDK, CLI, and TUI as the product:
 - [x] Make live data sources typed Python definitions that can return data shapes, add widgets and a `show` tool, and return visuals as `Result.blocks` (step 1 of the [web app proposal](design.md#11-proposal-web-app-typed-data-and-display-blocks)).
 - [x] Build `ssift web`: a local page with chat, citations, sources, and drawn visuals, plus model-free refresh of live data (step 2).
 - [x] Add a weather source and a map view with a radar layer (step 3).
-- [ ] Add stock prices with a live chart (step 4).
+- [x] Draw visuals with Plotly from tables: one `chart` widget with six kinds, maps by Plotly, widgets that may return any Plotly figure, and no automatic refresh.
+- [ ] Add stock prices (step 4).
 
 Open questions from this round:
 

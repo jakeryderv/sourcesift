@@ -93,10 +93,10 @@ def test_fresh_requests_and_plain_format(settings, install_model):
 
     install_model(respond)
     app = SourceSift(settings)
-    app.run_sync(Request(prompt="first", output_format="plain"))
+    app.run_sync(Request(prompt="zebra-one", output_format="plain"))
     app.run_sync("second")
     assert '"output_format": "plain"' in str(seen[0])
-    assert "first" not in str(seen[1])
+    assert "zebra-one" not in str(seen[1])
 
 
 @pytest.mark.asyncio
