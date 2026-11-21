@@ -17,11 +17,27 @@ class ContextDocument(Contract):
     role: Literal["background", "document", "guidance"] = "document"
 
 
-class SessionEvent(Contract):
-    """UI-independent progress; streamed drafts are provisional until run returns."""
+class Step(Contract):
+    """One thing the agent did, described for a person: a title, then details."""
 
-    kind: Literal["status", "draft", "reset"]
+    id: str
+    tool: str
+    state: Literal["running", "done", "failed"]
+    title: str
+    summary: str = ""
+    lines: tuple[str, ...] = ()
+
+
+class SessionEvent(Contract):
+    """UI-independent progress; streamed drafts are provisional until run returns.
+
+    A ``step`` event carries the step as it starts and again when it finishes;
+    its ``text`` is the step's title.
+    """
+
+    kind: Literal["status", "draft", "reset", "step"]
     text: str = Field(default="", repr=False)
+    step: Step | None = None
 
 
 class Request(Contract):
@@ -93,6 +109,7 @@ class Result(Contract):
     model: str
     references: tuple[Reference, ...] = ()
     blocks: tuple[Block, ...] = ()
+    steps: tuple[Step, ...] = ()
     selected_sources: tuple[str, ...] = ()
     window: ResearchWindow | None = None
     http_requests: int = 0

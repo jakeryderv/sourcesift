@@ -213,6 +213,10 @@ session.reset()  # clears history and reloads configured/initial context files
 it, and `session.enable_sources(["npr", "hacker-news"])` limits later turns to
 those IDs until `reset()`.
 
+`Result.steps` lists what the agent did in plain language, one step per tool
+call with its outcome. During a session turn the same steps arrive as `step`
+events, once when a step starts and once when it finishes.
+
 Sessions are independent objects, kept in memory by default. `app.session(save=True)`
 writes the conversation to a file after each completed turn, `session.saved_path`
 reports where, and `app.session(resume=True)` continues the most recently saved
