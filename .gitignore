@@ -30,3 +30,11 @@ site/
 
 # Opt-in research evaluation records (may contain supplied context)
 evaluation-results/
+
+# Quarto architecture overview exports and render cache
+/.quarto/
+/architecture-overview.pdf
+/architecture-overview_files/
+/output/pdf/
+
+**/*.quarto_ipynb
