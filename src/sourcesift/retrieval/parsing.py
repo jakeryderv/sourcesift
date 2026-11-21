@@ -1,6 +1,7 @@
 """Pure feed/HTML parsing of already bounded bytes; no hidden network access."""
 
 import html
+import warnings
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -8,7 +9,13 @@ from html.parser import HTMLParser
 from urllib.parse import urljoin
 
 import feedparser
-from trafilatura import extract
+
+# Trafilatura probes for urllib3's optional SOCKS support at import. SourceSift
+# fetches pages itself and uses no proxies, so the resulting warning about a
+# missing optional dependency would only be noise on every command.
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="SOCKS support in urllib3")
+    from trafilatura import extract
 
 from sourcesift.retrieval.http import Page
 from sourcesift.retrieval.urls import RetrievalError, normalize_url
