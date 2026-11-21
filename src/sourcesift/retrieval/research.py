@@ -7,11 +7,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from sourcesift.builtin import builtin_toolkit
 from sourcesift.core.config import Settings
-from sourcesift.data import VIEWS, Block
+from sourcesift.data import VIEWS, Block, Table
 from sourcesift.extend import FetchContext, Toolkit
 from sourcesift.models import Evidence, Reference, ResearchWindow
 from sourcesift.retrieval.http import Fetcher, Page, PageCache
@@ -45,14 +45,11 @@ def make_window(label: WindowName, settings: Settings, now: datetime) -> Researc
 
 @dataclass(frozen=True)
 class Dataset:
-    """Shapes one data source query returned, tied to the evidence it produced."""
+    """Tables one data source query returned, tied to the evidence it produced."""
 
     source_id: str
-    params: dict[str, Any]
-    shapes: tuple[BaseModel, ...]
+    tables: tuple[Table, ...]
     evidence_ids: tuple[str, ...]
-    refresh_seconds: int | None
-    window: WindowName = "recent"
 
 
 def _problems(exc: ValidationError) -> str:
@@ -150,8 +147,7 @@ class Research:
         showable = [
             {
                 "evidence_id": data.evidence_ids[0],
-                "data": [type(shape).__name__ for shape in data.shapes],
-                "widgets": self.toolkit.fitting(data.shapes),
+                "tables": [table.describe() for table in data.tables],
             }
             for data in {id(d): d for d in self.datasets.values()}.values()
         ]
@@ -290,32 +286,29 @@ class Research:
                 )
                 if self._add(item, record.page, source.id, "api_record"):
                     ids.append(self.evidence[item.url].id)
-            shapes = tuple(
-                shape for shape in result.data if isinstance(shape, data_source.returns)
-            )
-            if ids and shapes:
-                dataset = Dataset(
-                    source.id,
-                    parsed.model_dump(mode="json"),
-                    shapes,
-                    tuple(ids),
-                    data_source.refresh_seconds,
-                    self.window.label,
-                )
+            tables = tuple(t for t in result.tables if isinstance(t, Table))
+            if ids and tables:
+                dataset = Dataset(source.id, tables, tuple(ids))
                 self.datasets.update(dict.fromkeys(ids, dataset))
         except RetrievalError as exc:
             self.note(f"{source.name}: {exc}")
         return self._reply()
 
     async def show(
-        self, evidence_id: str, widget: str, options: dict[str, Any] | None = None
+        self,
+        evidence_id: str,
+        widget: str,
+        options: dict[str, Any] | None = None,
+        table: str = "",
     ) -> dict[str, object]:
-        """Show data returned by query_source as a visual beside the answer.
+        """Show a table returned by query_source as a visual beside the answer.
 
-        Pass an evidence_id listed under "showable" and a widget that accepts its
-        data; options must match the widget's options schema in the payload. The
-        application draws the visual from the retrieved data: values cannot be
-        passed in. Cite the same evidence in the answer or the visual is omitted.
+        Pass an evidence_id listed under "showable", a widget from the payload's
+        widgets, and options matching that widget's schema; options name the
+        table's columns exactly as listed. When the evidence has several tables,
+        pass the table's name. The application draws the visual from the
+        retrieved rows: values cannot be passed in. Cite the same evidence in the
+        answer or the visual is omitted.
         """
         key = evidence_id.strip().strip("[]")
         dataset = self.datasets.get(key)
@@ -325,33 +318,47 @@ class Research:
                 "under showable, from query_source in this conversation, can be shown."
             }
         chosen = self.toolkit.widgets.get(widget.strip())
-        fitting = self.toolkit.fitting(dataset.shapes)
-        shape = next(
-            (s for s in dataset.shapes if chosen and isinstance(s, chosen.accepts)),
-            None,
-        )
-        if chosen is None or shape is None:
+        if chosen is None:
             return {
-                "error": "That widget is unknown or does not accept this data. "
-                f"Widgets that fit: {', '.join(fitting) or 'none'}."
+                "error": "Unknown widget. Widgets: "
+                + ", ".join(self.toolkit.widgets)
+                + "."
             }
+        wanted = " ".join(table.split()).casefold()
+        candidates = [
+            t for t in dataset.tables if not wanted or t.name.casefold() == wanted
+        ]
+        if not candidates:
+            names = "; ".join(t.name for t in dataset.tables)
+            return {"error": f"No table has that name. Tables: {names}."}
         try:
             parsed = chosen.options.model_validate(options or {})
-            view = chosen.render(shape, parsed)
-            if not isinstance(view, VIEWS):
-                raise TypeError
         except ValidationError as exc:
             return {"error": f"Invalid options for {chosen.id}: {_problems(exc)}"}
-        except (ArithmeticError, LookupError, TypeError, ValueError):
-            return {"error": f"The {chosen.id} widget could not draw this data."}
+        # Without a table name, the first table the options fit is drawn.
+        view = None
+        problem = f"The {chosen.id} widget could not draw this data."
+        for candidate in candidates:
+            try:
+                view = chosen.render(candidate, parsed)
+                if not isinstance(view, VIEWS):
+                    raise TypeError
+            except ValidationError:
+                view = None
+            except ValueError as exc:
+                view, problem = None, " ".join(str(exc).split())[:300] or problem
+            except (ArithmeticError, LookupError, TypeError):
+                view = None
+            else:
+                break
+        if view is None:
+            return {"error": problem}
         block = Block(
             widget=chosen.id,
             evidence_ids=dataset.evidence_ids,
             source_id=dataset.source_id,
-            params=dataset.params,
             options=parsed.model_dump(mode="json"),
-            window=dataset.window,
-            refresh_seconds=dataset.refresh_seconds,
+            table=candidate,
             view=view,
         )
         if block in self.blocks:

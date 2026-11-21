@@ -10,16 +10,16 @@ from pydantic_ai.models.function import FunctionModel
 
 from sourcesift import (
     AgentSettings,
-    Chart,
     ConfigurationError,
+    Figure,
     Record,
     Result,
     Settings,
     SourceResult,
     SourceSift,
     SourcesSettings,
-    Stats,
     StatView,
+    Table,
     cli,
     source,
     widget,
@@ -86,18 +86,19 @@ def test_model_chooses_a_widget_and_the_application_draws_it(monkeypatch, capsys
         if step == 1:
             sent = payload(messages)
             treasury = next(s for s in sent["catalog"] if s["id"] == "us-treasury")
-            assert treasury["returns"] == ["TimeSeries", "Stats", "Table"]
             assert set(treasury["params"]["properties"]) == {"dataset", "days"}
             assert "params" not in next(s for s in sent["catalog"] if s["id"] == "npr")
             assert [w["id"] for w in sent["widgets"]] == [
-                "line-chart",
+                "chart",
                 "table",
                 "stats",
                 "map",
             ]
-            assert sent["widgets"][0]["accepts"] == "TimeSeries"
-            assert "log_scale" in sent["widgets"][0]["options"]["properties"]
-            assert "show(evidence_id, widget, options)" in info.instructions
+            assert set(sent["widgets"][0]) == {"id", "description", "options"}
+            assert {"kind", "x", "y", "series"} <= set(
+                sent["widgets"][0]["options"]["properties"]
+            )
+            assert "show(evidence_id, widget, options, table)" in info.instructions
             return tools(QUERY)
         if step == 2:
             return tools(
@@ -105,8 +106,12 @@ def test_model_chooses_a_widget_and_the_application_draws_it(monkeypatch, capsys
                     "show",
                     {
                         "evidence_id": "S1",
-                        "widget": "line-chart",
-                        "options": {"title": "Debt"},
+                        "widget": "chart",
+                        "options": {
+                            "title": "Debt",
+                            "x": "Date",
+                            "y": ["Total public debt outstanding"],
+                        },
                     },
                 ),
                 ("show", {"evidence_id": "S1", "widget": "stats"}),
@@ -116,19 +121,17 @@ def test_model_chooses_a_widget_and_the_application_draws_it(monkeypatch, capsys
     app = configure(monkeypatch, respond)
     result = app.run_sync("chart the national debt")
     chart, figures = result.blocks
-    assert chart.widget == "line-chart" and isinstance(chart.view, Chart)
+    assert chart.widget == "chart" and isinstance(chart.view, Figure)
     assert chart.view.title == "Debt" and chart.evidence_ids == ("S1",)
-    assert [p.value for p in chart.view.series[0].points] == [
-        38000000000100.5,
-        38000000000300.5,
-    ]
+    assert chart.view.data[0]["y"] == [38000000000100.5, 38000000000300.5]
+    assert chart.table.rows[0][0] == "2026-10-13"
     assert isinstance(figures.view, StatView) and figures.view.items[0].change == 200.0
     assert result.references[0].id == "S1" and result.http_requests == 1
     assert not any("visual" in note for note in result.limitations)
     # The whole result, visuals included, survives a JSON round trip.
     assert Result.model_validate(result.model_dump(mode="json")) == result
     text = cli.render_result(result, "plain")
-    assert "Visuals:\n- line-chart: Debt [S1]\n- stats: US public debt as of" in text
+    assert "Visuals:\n- chart: Debt [S1]\n- stats: US public debt, 2026-10-13" in text
 
 
 def test_uncited_visual_is_omitted_and_noted(monkeypatch):
@@ -188,18 +191,18 @@ def test_extensions_register_sources_and_widgets_in_python(monkeypatch):
         website="https://x.test/",
         description="Team metrics.",
         params=Params,
-        returns=(Stats,),
     )
     async def my_metrics(params, context):
         fetched = await context.get("https://x.test/api")
-        data = Stats(name=params.metric, items=({"label": "Open", "value": 7},))
+        data = Table(name=params.metric, columns=({"name": "Open"},), rows=((7,),))
         return SourceResult(
             [Record("Metrics", fetched.url, "Open: 7", fetched)], (data,)
         )
 
-    @widget(id="big-number", description="One figure.", accepts=Stats)
+    @widget(id="big-number", description="One figure.")
     def big_number(data, options):
-        return StatView(title=data.name.upper(), items=data.items[:1])
+        item = {"label": data.columns[0].name, "value": data.rows[0][0]}
+        return StatView(title=data.name.upper(), items=(item,))
 
     step = 0
 
@@ -225,7 +228,7 @@ def test_extensions_register_sources_and_widgets_in_python(monkeypatch):
     app.register(big_number)
     (block,) = app.run_sync("how many bugs").blocks
     assert block.source_id == "my-metrics" and block.view.title == "BUGS"
-    assert block.params == {"metric": "bugs"}
+    assert block.table.rows == ((7,),) and block.view.items[0].value == 7
 
     for item in (my_metrics, big_number):
         with pytest.raises(ConfigurationError, match="unique"):

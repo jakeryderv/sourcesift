@@ -60,11 +60,11 @@ Some sources answer with current data instead of offering a feed. The model
 reaches them through the `query_source` tool with typed parameters, and their
 records are cited like any other evidence, with the kind `api record`.
 
-| ID | Parameters | Evidence | Data for visuals |
+| ID | Parameters | Evidence | Tables for visuals |
 |---|---|---|---|
-| `hacker-news` | `query`: keywords, or empty for the current front page | Story titles, points, comment counts, and submitted links; keyword results are limited to the date window | A table of the stories |
-| `weather` | `place`: a city or town, optionally with a region or country; `days` of forecast (1 to 7, default 3); `units`: `metric` or `imperial` | Current conditions and the daily forecast for the place it resolved, with local observation time | Headline figures, hourly temperature series, a daily forecast table, and the location for a map |
-| `us-treasury` | `dataset`: `debt`, `interest-rates`, or `exchange-rates`; `days` of history for `debt` (7 to 3650, default 30) | The latest published figures with their record date; for `debt`, also the range of the history retrieved | `debt`: a time series and headline figures. Others: a table |
+| `hacker-news` | `query`: keywords, or empty for the current front page | Story titles, points, comment counts, and submitted links; keyword results are limited to the date window | The stories with points, comments, and submitter |
+| `weather` | `place`: a city or town, optionally with a region or country; `days` of forecast (1 to 7, default 3); `units`: `metric` or `imperial` | Current conditions and the daily forecast for the place it resolved, with local observation time | Current conditions, the location, hourly temperature, and the daily forecast |
+| `us-treasury` | `dataset`: `debt`, `interest-rates`, or `exchange-rates`; `days` of history for `debt` (7 to 3650, default 30) | The latest published figures with their record date; for `debt`, also the range of the history retrieved | `debt`: the three debt figures by day. Others: name and value |
 
 Each is defined in Python with a parameter model. Parameters are validated before
 any request is made; invalid ones are returned to the model to correct. A source
@@ -89,20 +89,27 @@ limits, timeouts, and the request budget apply to every request.
 
 ## Visuals
 
-A live data source can return its data as typed shapes (a time series, a table,
-headline figures) alongside the text the model reads. The model may then call the
-`show` tool to pick a widget for that data:
+A live data source can return its data as tables alongside the text the model
+reads. The model is told each table's columns and may call the `show` tool to
+pick a widget for one of them, naming the columns to use:
 
-| Widget | Accepts | Options |
+| Widget | Draws | Main options |
 |---|---|---|
-| `line-chart` | Time series | `title`, `log_scale` |
-| `table` | Table | `title`, `max_rows` |
-| `stats` | Headline figures | `title` |
-| `map` | Located places | `title`, `zoom`, `overlay` (`none` or `radar`) |
+| `chart` | A line, area, bar, stacked bar, scatter, or donut chart | `kind`, `x`, `y` (one or more numeric columns), `series`, `log_scale` |
+| `table` | Rows and columns | `columns`, `max_rows` |
+| `stats` | Headline figures from one row, with the change from the row before | `columns`, `row` |
+| `map` | Places from latitude and longitude columns | `label`, `value`, `zoom`, `overlay` (`none` or `radar`) |
 
+Charts and maps are [Plotly](https://plotly.com/javascript/) figures. Each widget
+is built in Python from the table's rows and checked against its columns; when
+the options do not fit (a column that does not exist or is not numeric, too many
+bars), the reason goes back to the model to correct.
+
+- A visual is a snapshot of the data when it was retrieved. To update it, ask
+  again.
 - The model chooses the widget and its options. It cannot pass values: the
-  application builds the visual from what the source returned, so a number on
-  screen always comes from retrieved data.
+  application builds the visual from the rows the source returned, so a number
+  on screen always comes from retrieved data.
 - A visual is kept only when the answer cites its evidence. Otherwise it is
   dropped and a note says so.
 - `limits.max_blocks` (default 4) bounds visuals per answer.

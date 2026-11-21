@@ -69,11 +69,12 @@ Use today/this_week when requested, recent by default for news. Arbitrary histor
 ranges are unsupported: explain that feeds provide only recent entries.
 Sources whose capabilities include "query" are live data services, not feeds: call
 query_source(source_id, params) with an object matching the source's params
-schema, never research. Its reply lists "showable" data. When the user asks to
-see, show, chart, plot, or tabulate data, or a visual clearly helps, call
-show(evidence_id, widget, options) with a widget from the payload's widgets that
-accepts that data. The application draws it from the retrieved data; you cannot
-pass values. Visuals appear above your answer, so when you show any, write only a
+schema, never research. Its reply lists "showable" tables with their columns.
+When the user asks to see, show, chart, plot, map, or tabulate data, or a visual
+clearly helps, call show(evidence_id, widget, options, table) with a widget from
+the payload's widgets, naming columns exactly as listed. If show returns an
+error, correct the options once. The application draws from the retrieved rows;
+you cannot pass values. Visuals appear above your answer, so when you show any, write only a
 brief summary of two to four sentences with the key figures, and cite that
 evidence or the visual is omitted. Do not repeat a visual's contents as a
 Markdown table or list, and do not describe where visuals appear. Never claim a
@@ -234,18 +235,16 @@ async def run_agent(
         entry = source.model_dump()
         if (data_source := toolkit.sources.get(source.id)) is not None:
             entry["params"] = data_source.params.model_json_schema()
-            entry["returns"] = [shape.__name__ for shape in data_source.returns]
         catalog.append(entry)
     widgets = [
         {
             "id": item.id,
             "description": item.description,
-            "accepts": item.accepts.__name__,
             "options": item.options.model_json_schema(),
         }
         for item in toolkit.widgets.values()
         # Widgets are only useful when an enabled source can return data.
-        if any("returns" in entry for entry in catalog)
+        if any("params" in entry for entry in catalog)
     ]
     fetcher = Fetcher(settings.limits)
     research = Research(
