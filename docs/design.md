@@ -364,7 +364,13 @@ and completion criteria belong in [roadmap.md](roadmap.md).
 
 ## 11. Proposal: Web App, Typed Data, and Display Blocks
 
-**Status: proposed, not implemented.** This section is a draft for discussion. It
+**Status: step 1 of the order of work is implemented** (typed sources, the
+`TimeSeries`, `Table`, and `Stats` shapes, three widgets, the `show` tool, and
+`Result.blocks`; see [visuals](research.md#visuals) and the
+[SDK](sdk.md#data-sources-and-widgets)). `GeoPoints` and the `map` primitive wait
+for the weather source that needs them, the web app is not built, and built-ins are
+registered by `app.register(...)` rather than an extension file. The rest of this
+section is the proposal as agreed. It
 would make a local web app the main interface, keep `ssift ask`, retire the Textual
 chat once the web app covers the same ground, and turn the SDK into the way
 SourceSift is extended: typed sources and widgets written in Python.

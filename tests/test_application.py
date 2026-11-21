@@ -80,6 +80,7 @@ def test_sync_async_context_and_usage(settings, install_model, tmp_path):
             "research",
             "query_source",
             "read_article",
+            "show",
         }
 
 

@@ -50,7 +50,7 @@ class HelpScreen(ModalScreen[None]):
 
 def source_kind(source: Source) -> str:
     """How a source is read, in the words the catalog documentation uses."""
-    if source.api is not None:
+    if "query" in source.capabilities:
         return "live data"
     return "feed and articles" if "article" in source.capabilities else "feed only"
 

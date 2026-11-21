@@ -486,7 +486,7 @@ async def test_file_completion_in_middle_and_duplicate_basenames(
         (tmp_path / name / "notes.md").write_text(name)
     captured = []
 
-    async def run(request, settings, registry, *, state, on_event, cache):
+    async def run(request, settings, registry, *, state, on_event, cache, toolkit):
         captured.append(request)
         return Result(answer="Done", model="example/test")
 

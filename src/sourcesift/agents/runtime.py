@@ -34,11 +34,13 @@ from pydantic_ai.models.openrouter import OpenRouterModel, OpenRouterModelSettin
 from pydantic_ai.providers.openrouter import OpenRouterProvider
 from pydantic_ai.usage import UsageLimits
 
+from sourcesift.builtin import builtin_toolkit
 from sourcesift.core.config import Settings
 from sourcesift.errors import ConfigurationError, InputError, ModelError
+from sourcesift.extend import Toolkit
 from sourcesift.models import Evidence, Request, Result, SessionEvent, Usage
 from sourcesift.retrieval.http import Fetcher, PageCache
-from sourcesift.retrieval.research import CITATION, Research
+from sourcesift.retrieval.research import CITATION, Dataset, Research
 from sourcesift.sources import SourceRegistry
 
 NO_RETRIEVAL = (
@@ -60,7 +62,13 @@ window='any') unless freshness was requested. Use only URLs in the task.
 Use today/this_week when requested, recent by default for news. Arbitrary historical
 ranges are unsupported: explain that feeds provide only recent entries.
 Sources whose capabilities include "query" are live data services, not feeds: call
-query_source(source_id, query) as their description directs, never research.
+query_source(source_id, params) with an object matching the source's params
+schema, never research. Its reply lists "showable" data. When the user asks to
+see, show, chart, plot, or tabulate data, or a visual clearly helps, call
+show(evidence_id, widget, options) with a widget from the payload's widgets that
+accepts that data. The application draws it from the retrieved data; you cannot
+pass values. Still state the key figures in the answer and cite that evidence, or
+the visual is omitted. Never claim a visual is shown unless show succeeded.
 After research, read_article can retrieve details from returned links. Use it when
 feed summaries cannot support the requested detail. Retrieval is bounded; stop
 when evidence is sufficient. Do not repeatedly call tools that failed.
@@ -104,6 +112,8 @@ class ConversationState:
     evidence: dict[str, Evidence] = field(default_factory=dict)
     next_id: int = 1
     limitations: tuple[str, ...] = ()
+    # Data behind earlier evidence, so a follow-up can show it. Not saved to disk.
+    datasets: dict[str, Dataset] = field(default_factory=dict)
 
     def size_bytes(self) -> int:
         return (
@@ -205,9 +215,29 @@ async def run_agent(
     state: ConversationState | None = None,
     on_event: EventHandler | None = None,
     cache: PageCache | None = None,
+    toolkit: Toolkit | None = None,
 ) -> Result:
     """Execute bounded tools and one citation-repair retry without provider retries."""
     validate_model_access(settings)
+    toolkit = toolkit if toolkit is not None else builtin_toolkit()
+    catalog = []
+    for source in registry.list():
+        entry = source.model_dump()
+        if (data_source := toolkit.sources.get(source.id)) is not None:
+            entry["params"] = data_source.params.model_json_schema()
+            entry["returns"] = [shape.__name__ for shape in data_source.returns]
+        catalog.append(entry)
+    widgets = [
+        {
+            "id": item.id,
+            "description": item.description,
+            "accepts": item.accepts.__name__,
+            "options": item.options.model_json_schema(),
+        }
+        for item in toolkit.widgets.values()
+        # Widgets are only useful when an enabled source can return data.
+        if any("returns" in entry for entry in catalog)
+    ]
     fetcher = Fetcher(settings.limits)
     research = Research(
         settings,
@@ -217,13 +247,16 @@ async def run_agent(
         previous=state.evidence if state else None,
         next_id=state.next_id if state else 1,
         cache=cache,
+        toolkit=toolkit,
+        datasets=state.datasets if state else None,
     )
     payload = json.dumps(
         {
             "task": request.prompt,
             "context": [document.model_dump() for document in request.context],
             "output_format": request.output_format,
-            "catalog": [source.model_dump() for source in registry.list()],
+            "catalog": catalog,
+            "widgets": widgets,
             "now_utc": research.now.isoformat(),
             "timezone": settings.sources.timezone,
             "recent_days": settings.sources.recent_days,
@@ -282,6 +315,7 @@ async def run_agent(
                 )
                 agent.tool_plain(sequential=True)(research.research)
                 agent.tool_plain(sequential=True)(research.query_source)
+                agent.tool_plain(sequential=True)(research.show)
                 agent.tool_plain(sequential=True)(research.read_article)
 
                 @agent.output_validator
@@ -365,12 +399,18 @@ async def run_agent(
         limitations.append(
             "The model reached its output token limit; the answer may be incomplete."
         )
+    blocks = research.blocks_for(answer)
+    if len(blocks) < len(research.blocks):
+        limitations.append(
+            "A visual was omitted because the answer did not cite its evidence."
+        )
     usage = response.usage
     result = Result(
         answer=answer,
         limitations=tuple(dict.fromkeys(limitations)),
         model=settings.agent.model or "",
         references=research.references(answer),
+        blocks=blocks,
         selected_sources=tuple(research.selected),
         window=research.window,
         http_requests=fetcher.requests,
@@ -394,7 +434,11 @@ async def run_agent(
             )
         ]
         candidate = ConversationState(
-            messages, research.all_evidence, research.next_id, result.limitations
+            messages,
+            research.all_evidence,
+            research.next_id,
+            result.limitations,
+            research.datasets,
         )
         if candidate.size_bytes() > settings.limits.max_session_bytes:
             raise InputError(
@@ -404,4 +448,5 @@ async def run_agent(
         state.evidence = candidate.evidence
         state.next_id = candidate.next_id
         state.limitations = candidate.limitations
+        state.datasets = candidate.datasets
     return result

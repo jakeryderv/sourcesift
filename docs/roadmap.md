@@ -200,6 +200,9 @@ prototype while keeping the Python SDK, CLI, and TUI as the product:
 - [x] Add live data sources behind a `query_source` tool, with built-in adapters for Hacker News and US Treasury fiscal data.
 - [x] Add opt-in saved conversations with `--save` and `--continue`.
 
+- [x] Make live data sources typed Python definitions that can return data shapes, add widgets and a `show` tool, and return visuals as `Result.blocks` (step 1 of the [web app proposal](design.md#11-proposal-web-app-typed-data-and-display-blocks)).
+- [ ] Build `ssift web` to draw those visuals (step 2).
+
 Open questions from this round:
 
 - [ ] Decide whether documented public APIs may be exempt from the robots check. arXiv search, Open-Meteo, and the US National Weather Service disallow all agents on their API hosts, so weather is not covered and arXiv is feed-only.

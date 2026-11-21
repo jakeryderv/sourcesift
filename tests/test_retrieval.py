@@ -22,8 +22,16 @@ from sourcesift import (
     SourcesSettings,
     load_settings,
 )
+from sourcesift.builtin import (
+    BUILTIN_CATALOG,
+    builtin_toolkit,
+    hacker_news,
+    us_treasury,
+)
+from sourcesift.contract import Contract
+from sourcesift.data import Chart, Stats, StatView, Table, TableView, TimeSeries
+from sourcesift.extend import Record, SourceResult, Toolkit, source, widget
 from sourcesift.retrieval import http
-from sourcesift.retrieval.apis import ADAPTERS
 from sourcesift.retrieval.http import Fetcher, Page, public_address
 from sourcesift.retrieval.parsing import (
     discover_feeds,
@@ -209,25 +217,26 @@ def test_normalization_idempotent(query):
 
 
 def test_registry_settings_and_sdk_registration(tmp_path):
-    registry = SourceRegistry(BUILTIN_SOURCES)
-    assert len(registry.list()) == 31
+    registry = SourceRegistry(BUILTIN_CATALOG)
+    assert len(registry.list()) == 31 and len(BUILTIN_SOURCES) == 29
     # Publishers that refuse article retrieval are registered as summaries only.
     assert {s.id for s in registry.list() if s.capabilities == ("feed",)} == {
         "al-jazeera",
         "lwn",
         "politico",
     }
-    # Live data sources are queried through an adapter and declare no feeds.
-    assert {s.id: s.api for s in registry.list() if s.api} == {
-        "hacker-news": "hacker-news",
-        "us-treasury": "us-treasury",
-    }
-    assert set(ADAPTERS) == {s.api for s in registry.list() if s.api}
+    # Live data sources are implemented in Python and declare no feeds.
+    live = {s.id for s in registry.list() if "query" in s.capabilities}
+    assert live == {"hacker-news", "us-treasury"} == set(builtin_toolkit().sources)
+    assert all(
+        s.capabilities == ("query",) and not s.feeds
+        for s in registry.list()
+        if s.id in live
+    )
     for change in (
-        {"api": "hacker-news"},
         {"capabilities": ["query"]},
-        {"api": "hacker-news", "capabilities": ["query", "feed"]},
-        {"api": "unknown-service", "capabilities": ["query"], "feeds": []},
+        {"capabilities": ["query", "feed"]},
+        {"capabilities": ["query", "article"], "feeds": []},
     ):
         with pytest.raises(ValidationError):
             SOURCE.model_validate({**SOURCE.model_dump(), **change})
@@ -762,26 +771,12 @@ async def test_conversation_cache_reuses_feeds_but_not_articles():
     assert cache.get("https://example.com/feed") is None
 
 
-HN = Source(
-    id="hn",
-    name="Hacker News",
-    website="https://news.ycombinator.com/",
-    description="Community stories",
-    api="hacker-news",
-    capabilities=("query",),
-)
-TREASURY = Source(
-    id="treasury",
-    name="US Treasury Fiscal Data",
-    website="https://fiscaldata.treasury.gov/",
-    description="Fiscal datasets",
-    api="us-treasury",
-    capabilities=("query",),
-)
+HN = hacker_news.source
+TREASURY = us_treasury.source
 
 
 def api_fetcher(body):
-    """Echo the requested URL so the adapter's request can be inspected."""
+    """Echo the requested URL so the source's request can be inspected."""
     fetcher = AsyncMock()
 
     async def get(url):
@@ -812,32 +807,38 @@ async def test_hacker_news_front_page_and_windowed_search():
     }
     fetcher = api_fetcher(hits)
     run = Research(Settings(), SourceRegistry([HN]), fetcher, "what is on HN", now=NOW)
-    reply = await run.query_source("hn", "  ", "today")
+    reply = await run.query_source("hacker-news", {"query": "  "}, "today")
     assert fetcher.get.await_args.args[0] == (
         "https://hn.algolia.com/api/v1/search?hitsPerPage=6&tags=front_page"
     )
     (item,) = run.evidence.values()
     assert item.url == "https://news.ycombinator.com/item?id=101"
-    assert item.kind == "api_record" and item.source_id == "hn"
+    assert item.kind == "api_record" and item.source_id == "hacker-news"
     assert item.title == "Show HN: a [library]" and item.author == "someone"
     assert "120 points and 0 comments" in item.text
     assert "Submitted link: https://example.com/project" in item.text
     assert "Details here." in item.text and "ignored" not in item.text
     assert item.limitations == () and reply["evidence"]
-    assert run.selected == ["hn"]
+    assert run.selected == ["hacker-news"]
+    # The same stories are returned as a table that a widget can show.
+    assert reply["showable"] == [
+        {"evidence_id": "S1", "data": ["Table"], "widgets": ["table"]}
+    ]
+    (table,) = run.datasets["S1"].shapes
+    assert isinstance(table, Table) and table.name == "Hacker News front page"
+    assert table.rows == (("Show HN: a [library]", 120.0, 0.0, "someone"),)
 
     # A keyword query searches stories and is bounded by the request window.
     search = Research(Settings(), SourceRegistry([HN]), fetcher, "rust on HN", now=NOW)
-    await search.query_source("hn", "rust  async & more" + "x" * 300, "recent")
+    await search.query_source("hacker-news", {"query": "rust  async & more"})
     url = fetcher.get.await_args.args[0]
     assert "tags=story" in url and "query=rust+async+%26+more" in url
-    assert len(url) < 400
     since = int((NOW - timedelta(days=7)).timestamp())
     assert f"numericFilters=created_at_i%3E{since}" in url
 
 
 @pytest.mark.asyncio
-async def test_treasury_dataset_is_named_and_keeps_the_latest_period():
+async def test_treasury_table_dataset_keeps_the_latest_period():
     body = {
         "data": [
             {
@@ -864,7 +865,7 @@ async def test_treasury_dataset_is_named_and_keeps_the_latest_period():
     fetcher = api_fetcher(body)
     run = Research(Settings(), SourceRegistry([TREASURY]), fetcher, "rates", now=NOW)
     # A reporting period older than the window is still the latest published value.
-    await run.query_source("treasury", "Interest Rates", "today")
+    await run.query_source("us-treasury", {"dataset": "interest-rates"}, "today")
     assert fetcher.get.await_args.args[0] == (
         "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/"
         "v2/accounting/od/avg_interest_rates?sort=-record_date&page%5Bsize%5D=40"
@@ -878,12 +879,246 @@ async def test_treasury_dataset_is_named_and_keeps_the_latest_period():
     assert "Average Interest Rate Amount: 4.014" in item.text
     assert "Treasury Notes" in item.text and "Old Bills" not in item.text
     assert "src_line_nbr" not in item.text and "record_fiscal_year" not in item.text
+    (table,) = run.datasets[item.id].shapes
+    assert isinstance(table, Table)
+    assert [c.name for c in table.columns] == ["Name", "Average Interest Rate Amount"]
+    assert table.columns[1].unit == "%"
+    assert table.rows == (("Treasury Bills", 4.014), ("Treasury Notes", 3.399))
 
+    # Invalid params make no request and are returned for the model to correct.
     unknown = Research(Settings(), SourceRegistry([TREASURY]), fetcher, "x", now=NOW)
     calls = fetcher.get.await_count
-    await unknown.query_source("treasury", "stock prices")
+    for params in (
+        {"dataset": "stock prices"},
+        {},
+        None,
+        {"dataset": "debt", "days": 0},
+        {"dataset": "debt", "extra": 1},
+    ):
+        reply = await unknown.query_source("us-treasury", params)
+        assert str(reply["error"]).startswith("Invalid params for us-treasury: ")
+    assert "Extra inputs are not permitted" in str(reply["error"])
+    rejected = await unknown.query_source("us-treasury", {"dataset": "stock prices"})
+    # The message names the field, never the rejected value.
+    assert "dataset:" in str(rejected["error"])
+    assert "stock prices" not in str(rejected["error"])
     assert fetcher.get.await_count == calls and not unknown.evidence
-    assert any("must be one of: debt" in note for note in unknown.limitations)
+    assert unknown.selected == [] and "error" not in str(unknown.limitations)
+
+
+def debt_rows():
+    return {
+        "data": [
+            {
+                "record_date": "2026-10-14",
+                "tot_pub_debt_out_amt": "38000000000300.50",
+                "debt_held_public_amt": "30000000000200.25",
+                "intragov_hold_amt": "8000000000100.25",
+            },
+            {
+                "record_date": "2026-10-13",
+                "tot_pub_debt_out_amt": "38000000000100.50",
+                "debt_held_public_amt": "30000000000100.25",
+                "intragov_hold_amt": "null",
+            },
+            {"record_date": "bad date", "tot_pub_debt_out_amt": "1"},
+            {
+                "record_date": "2026-10-10",
+                "tot_pub_debt_out_amt": "37000000000000.00",
+                "debt_held_public_amt": "not a number",
+                "intragov_hold_amt": "8000000000000.00",
+            },
+        ]
+    }
+
+
+@pytest.mark.asyncio
+async def test_treasury_debt_history_is_evidence_series_and_figures():
+    fetcher = api_fetcher(debt_rows())
+    run = Research(Settings(), SourceRegistry([TREASURY]), fetcher, "debt", now=NOW)
+    reply = await run.query_source("us-treasury", {"dataset": "debt", "days": 90})
+    url = fetcher.get.await_args.args[0]
+    since = (NOW - timedelta(days=90)).date().isoformat()
+    assert "v2/accounting/od/debt_to_penny?" in url
+    assert f"filter=record_date%3Agte%3A{since}" in url and "sort=-record_date" in url
+    (item,) = run.evidence.values()
+    assert item.title == "Debt to the Penny (as of 2026-10-14)"
+    assert "2026-10-14: Total public debt outstanding: 38000000000300.50" in item.text
+    # The text the model cites states the range the chart will draw.
+    assert "3 daily records from 2026-10-10 (37000000000000.00)" in item.text
+    assert "to 2026-10-14 (38000000000300.50)" in item.text
+    assert reply["showable"] == [
+        {
+            "evidence_id": "S1",
+            "data": ["TimeSeries", "Stats"],
+            "widgets": ["line-chart", "stats"],
+        }
+    ]
+    dataset = run.datasets["S1"]
+    assert dataset.params == {"dataset": "debt", "days": 90}
+    assert dataset.refresh_seconds is None and dataset.evidence_ids == ("S1",)
+    series, stats = dataset.shapes
+    assert isinstance(series, TimeSeries) and isinstance(stats, Stats)
+    total, public, intragov = series.series
+    # Oldest first; unusable dates and values are dropped per series.
+    assert [p.value for p in total.points] == [
+        37000000000000.0,
+        38000000000100.5,
+        38000000000300.5,
+    ]
+    assert total.points[0].at == datetime(2026, 10, 10, tzinfo=UTC)
+    assert len(public.points) == 2 and len(intragov.points) == 2
+    assert stats.items[0].value == 38000000000300.5 and stats.items[0].change == 200.0
+    assert stats.items[0].unit == "USD"
+
+
+@pytest.mark.asyncio
+async def test_show_draws_only_retrieved_data_with_validated_options():
+    fetcher = api_fetcher(debt_rows())
+    run = Research(Settings(), SourceRegistry([TREASURY]), fetcher, "debt", now=NOW)
+    assert "No data is attached" in str((await run.show("S1", "line-chart"))["error"])
+    await run.query_source("us-treasury", {"dataset": "debt"})
+
+    shown = await run.show(" [S1] ", "line-chart", {"title": "Debt", "log_scale": True})
+    assert shown == {
+        "shown": "line-chart",
+        "title": "Debt",
+        "cite": "Cite [S1] in the answer, or this visual is omitted.",
+    }
+    (block,) = run.blocks
+    assert block.widget == "line-chart" and block.evidence_ids == ("S1",)
+    assert block.source_id == "us-treasury"
+    assert block.params == {"dataset": "debt", "days": 30}
+    assert block.options == {"title": "Debt", "log_scale": True}
+    assert isinstance(block.view, Chart) and block.view.y_log
+    assert block.view.unit == "USD" and len(block.view.series) == 3
+    assert block.view.series[0].points[-1].value == 38000000000300.5
+    # Showing the same thing twice adds nothing.
+    assert "cite" not in await run.show(
+        "S1", "line-chart", {"title": "Debt", "log_scale": True}
+    )
+    assert len(run.blocks) == 1
+
+    # The model cannot supply values, unknown options, or a widget of the wrong shape.
+    for options in ({"series": [1, 2]}, {"title": "x" * 81}, {"log_scale": "maybe"}):
+        reply = await run.show("S1", "line-chart", options)
+        assert str(reply["error"]).startswith("Invalid options for line-chart: ")
+    for name in ("table", "pie", ""):
+        reply = await run.show("S1", name)
+        assert "Widgets that fit: line-chart, stats." in str(reply["error"])
+    assert len(run.blocks) == 1
+
+    await run.show("S1", "stats")
+    figures = run.blocks[1].view
+    assert isinstance(figures, StatView)
+    assert figures.title == "US public debt as of 2026-10-14"
+    # A visual is kept only when the answer cites its evidence.
+    assert run.blocks_for("Debt rose [S1].") == tuple(run.blocks)
+    assert run.blocks_for("Debt rose [S9].") == () == run.blocks_for("Debt rose.")
+
+    limited = Research(
+        Settings(limits=Limits(max_blocks=1)),
+        SourceRegistry([TREASURY]),
+        fetcher,
+        "debt",
+        now=NOW,
+        datasets=run.datasets,
+    )
+    # Data from an earlier turn can still be shown, up to the per-answer limit.
+    assert (await limited.show("S1", "stats"))["shown"] == "stats"
+    assert "limit" in str((await limited.show("S1", "line-chart"))["error"])
+
+
+@pytest.mark.asyncio
+async def test_widgets_and_sources_are_independent_python_definitions():
+    class Params(Contract):
+        city: str
+
+    @source(
+        id="readings",
+        name="Readings",
+        website="https://example.com/",
+        description="Sensor readings",
+        params=Params,
+        returns=(Table,),
+        refresh_seconds=60,
+    )
+    async def readings(params, context):
+        fetched = await context.get("https://example.com/api?city=" + params.city)
+        rows = tuple((f"r{i}", i) for i in range(30))
+        table = Table(
+            name="Readings", columns=({"name": "Id"}, {"name": "Value"}), rows=rows
+        )
+        # An undeclared shape is ignored rather than shown.
+        extra = Stats(name="x", items=({"label": "a", "value": 1},))
+        return SourceResult(
+            [
+                Record(
+                    "Readings for " + params.city, fetched.url, "30 readings", fetched
+                )
+            ],
+            (table, extra),
+        )
+
+    class Options(Contract):
+        top: int = 3
+
+    @widget(id="top", description="First rows.", accepts=Table, options=Options)
+    def top(data, options):
+        return TableView(
+            title="Top", columns=data.columns, rows=data.rows[: options.top]
+        )
+
+    @widget(id="broken", description="Fails.", accepts=Table)
+    def broken(data, options):
+        return data.rows[100]
+
+    @widget(id="wrong", description="Returns no view.", accepts=Table)
+    def wrong(data, options):
+        return "not a view"
+
+    assert readings.source.capabilities == ("query",) and readings.refresh_seconds == 60
+    with pytest.raises(ConfigurationError, match="unique"):
+        Toolkit([readings, readings])
+    with pytest.raises(ConfigurationError, match="unique"):
+        Toolkit(widgets=[top, top])
+    builtin = builtin_toolkit()
+    toolkit = Toolkit([readings], [*builtin.widgets.values(), top, broken, wrong])
+    fetcher = api_fetcher({})
+    run = Research(
+        Settings(),
+        SourceRegistry([readings.source]),
+        fetcher,
+        "x",
+        now=NOW,
+        toolkit=toolkit,
+    )
+    reply = await run.query_source("readings", {"city": "Oslo"})
+    assert reply["showable"] == [
+        {
+            "evidence_id": "S1",
+            "data": ["Table"],
+            "widgets": ["table", "top", "broken", "wrong"],
+        }
+    ]
+    # A built-in widget shows a new source's data, and a new widget shows it too.
+    await run.show("S1", "table", {"max_rows": 2})
+    await run.show("S1", "top")
+    first, second = run.blocks
+    assert isinstance(first.view, TableView) and len(first.view.rows) == 2
+    assert first.refresh_seconds == 60 and first.params == {"city": "Oslo"}
+    assert isinstance(second.view, TableView) and second.view.title == "Top"
+    assert second.options == {"top": 3} and len(second.view.rows) == 3
+    for name in ("broken", "wrong"):
+        assert "could not draw" in str((await run.show("S1", name))["error"])
+    assert len(run.blocks) == 2
+
+    # The same source is not queryable without its implementation.
+    plain = Research(
+        Settings(), SourceRegistry([readings.source]), fetcher, "x", now=NOW
+    )
+    await plain.query_source("readings", {"city": "Oslo"})
+    assert any("not queryable" in note for note in plain.limitations)
 
 
 @pytest.mark.asyncio
@@ -892,16 +1127,17 @@ async def test_query_source_constraints_and_failures():
     fetcher = api_fetcher({"hits": []})
 
     run = Research(Settings(), registry, fetcher, "news", now=NOW)
-    await run.query_source("fixture", "anything")
-    await run.query_source("missing", "anything")
+    await run.query_source("fixture", {})
+    await run.query_source("missing", {})
     assert fetcher.get.await_count == 0
     assert any("not queryable" in note for note in run.limitations)
-    await run.query_source("hn", "")
+    reply = await run.query_source("hacker-news")
     assert any("returned no records" in note for note in run.limitations)
+    assert "showable" not in reply and not run.datasets
 
     # A feed request for a queryable source explains which tool applies.
     feeds = Research(Settings(), registry, fetcher, "news", now=NOW)
-    await feeds.research(["hn"], [], [], "recent")
+    await feeds.research(["hacker-news"], [], [], "recent")
     assert any("query_source" in note for note in feeds.limitations)
 
     # A named-publication constraint set by research stays in force.
@@ -910,23 +1146,23 @@ async def test_query_source_constraints_and_failures():
     fetcher.get.return_value = page(feed(entry()))
     await named.research(["fixture"], [], ["Fixture News"], "any")
     count = fetcher.get.await_count
-    await named.query_source("hn", "")
+    await named.query_source("hacker-news")
     assert fetcher.get.await_count == count and named.selected == ["fixture"]
     assert named.window is not None and named.window.label == "any"
 
     limited = Research(
         Settings(limits=Limits(max_sources=1)), registry, api_fetcher({}), "x", now=NOW
     )
-    await limited.query_source("hn", "")
-    await limited.query_source("treasury", "debt")
-    assert limited.selected == ["hn"]
+    await limited.query_source("hacker-news")
+    await limited.query_source("us-treasury", {"dataset": "debt"})
+    assert limited.selected == ["hacker-news"]
     assert any("Source limit reached" in note for note in limited.limitations)
 
     for body in ("not json", "[1, 2]"):
         broken = AsyncMock()
         broken.get.return_value = page(body, "https://hn.algolia.com/x", "text/plain")
         failed = Research(Settings(), registry, broken, "x", now=NOW)
-        await failed.query_source("hn", "")
+        await failed.query_source("hacker-news")
         assert any("unexpected response" in note for note in failed.limitations)
 
 

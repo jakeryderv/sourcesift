@@ -132,6 +132,7 @@ All are `[limits]` settings. Existing input limits above remain unchanged.
 | `max_items` | 18 | Distinct evidence items retained |
 | `max_items_per_source` | 6 | Accepted entries per source, most recent dated first |
 | `max_articles` | 6 | Article attempts, including failures |
+| `max_blocks` | 4 | [Visuals](research.md#visuals) in one answer |
 | `max_http_requests` | 24 | Requests including robots and redirects |
 | `http_timeout_seconds` | 10 | One fetch, including DNS, robots, redirects, and body |
 | `max_response_bytes` | 2097152 | Decoded response-body byte limit |

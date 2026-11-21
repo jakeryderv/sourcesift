@@ -15,8 +15,8 @@ class Source(Contract):
 
     Feed access means recent entries only. A website without feeds uses bounded
     RSS/Atom discovery; article access does not imply search or archive access.
-    A source with ``api`` answers a short query through a built-in adapter for
-    that service instead of a feed; its description says what a query may be.
+    A source with the ``query`` capability is a live data service implemented in
+    Python (see ``sourcesift.extend``); it has no feed and is not read as articles.
     """
 
     id: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
@@ -28,7 +28,6 @@ class Source(Contract):
     geography: str = Field(default="Unspecified", max_length=200)
     language: str = "en"
     aliases: tuple[str, ...] = Field(default=(), max_length=8)
-    api: Literal["hacker-news", "us-treasury"] | None = None
     capabilities: tuple[Literal["feed", "article", "query"], ...] = ("feed", "article")
 
     @field_validator("website")
@@ -48,10 +47,10 @@ class Source(Contract):
     def consistent_capabilities(self) -> "Source":
         if self.feeds and "feed" not in self.capabilities:
             raise ValueError("feed URLs require the feed capability")
-        if (self.api is not None) != ("query" in self.capabilities):
-            raise ValueError("an api source needs exactly the query capability")
-        if self.api is not None and (self.feeds or "feed" in self.capabilities):
-            raise ValueError("an api source cannot also declare feeds")
+        if "query" in self.capabilities and (
+            self.feeds or self.capabilities != ("query",)
+        ):
+            raise ValueError("a live data source has only the query capability")
         return self
 
 
@@ -364,27 +363,5 @@ BUILTIN_SOURCES = (
         description="New and updated research preprints in artificial intelligence, machine learning, and computational linguistics (arXiv cs.AI, cs.LG, cs.CL), with abstracts. Preprints are not peer reviewed. The feed lists the latest announcement day only and cannot be searched.",
         topics=("research", "ai", "machine-learning"),
         geography="International research",
-    ),
-    Source(
-        id="hacker-news",
-        name="Hacker News",
-        website="https://news.ycombinator.com/",
-        api="hacker-news",
-        capabilities=("query",),
-        aliases=("HN",),
-        description="Live data on what the technology community is discussing: story titles, points, comment counts, and submitted links. Query with an empty string for the current front page, or with a few keywords to find stories about a topic within the date window. Points and comments measure attention, not accuracy.",
-        topics=("technology", "software", "startups"),
-        geography="International technology community",
-    ),
-    Source(
-        id="us-treasury",
-        name="US Treasury Fiscal Data",
-        website="https://fiscaldata.treasury.gov/",
-        api="us-treasury",
-        capabilities=("query",),
-        aliases=("Treasury", "Fiscal Data"),
-        description="Official US Treasury figures, latest published values only. The query must be exactly one dataset name: 'debt' (total public debt outstanding, daily), 'interest-rates' (average interest rates on Treasury securities, monthly), or 'exchange-rates' (Treasury reporting rates of exchange, quarterly). Not stock prices or market quotes.",
-        topics=("economics", "finance", "government-data"),
-        geography="United States",
     ),
 )
