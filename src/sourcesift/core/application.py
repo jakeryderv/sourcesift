@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
@@ -12,9 +13,13 @@ from sourcesift.builtin import BUILTIN_CATALOG, builtin_toolkit
 from sourcesift.core.config import Settings, load_settings
 from sourcesift.core.context import prepare_request
 from sourcesift.core.session import Session
+from sourcesift.data import Block, Chart, StatView, TableView
 from sourcesift.errors import ConfigurationError, InputError
-from sourcesift.extend import DataSource, Toolkit, Widget
+from sourcesift.extend import DataSource, FetchContext, Toolkit, Widget
 from sourcesift.models import Request, Result
+from sourcesift.retrieval.http import Fetcher
+from sourcesift.retrieval.research import make_window
+from sourcesift.retrieval.urls import RetrievalError
 from sourcesift.sources import Source, SourceRegistry
 
 
@@ -105,6 +110,50 @@ class SourceSift:
             save=self.settings.sessions.save if save is None else save,
             resume=resume,
         )
+
+    async def refresh(self, block: Block) -> Block:
+        """Fetch a visual's data again and redraw it, without a model request.
+
+        The source and widget run with the parameters and options recorded in the
+        block, through the same bounded fetcher. The caller decides how often;
+        ``block.refresh_seconds`` is the source's own minimum interval.
+        """
+        data_source = self.toolkit.sources.get(block.source_id)
+        chosen = self.toolkit.widgets.get(block.widget)
+        if (
+            data_source is None
+            or chosen is None
+            or self.registry.resolve(block.source_id) is None
+        ):
+            raise InputError("This visual's source or widget is not available.")
+        try:
+            params = data_source.params.model_validate(block.params)
+            options = chosen.options.model_validate(block.options)
+        except ValidationError:
+            raise InputError("This visual's parameters are no longer valid.") from None
+        now = datetime.now(UTC)
+        window = make_window(block.window, self.settings, now)
+        limit = self.settings.limits.max_items_per_source
+        try:
+            async with Fetcher(self.settings.limits) as fetcher:
+                result = await data_source.fetch(
+                    params, FetchContext(fetcher.get, now, window.start, limit)
+                )
+            shape = next(
+                s
+                for s in result.data
+                if isinstance(s, data_source.returns) and isinstance(s, chosen.accepts)
+            )
+            view = chosen.render(shape, options)
+            if not isinstance(view, Chart | TableView | StatView):
+                raise TypeError
+        except RetrievalError as exc:
+            raise InputError(f"Could not refresh: {exc}") from None
+        except (ArithmeticError, LookupError, StopIteration, TypeError, ValueError):
+            raise InputError(
+                "The source returned nothing this visual can draw."
+            ) from None
+        return block.model_copy(update={"view": view})
 
     async def run(
         self,

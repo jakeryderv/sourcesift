@@ -119,5 +119,6 @@ class Block(Contract):
     source_id: str
     params: dict[str, JsonValue]
     options: dict[str, JsonValue]
+    window: Literal["recent", "today", "this_week", "any"] = "recent"
     refresh_seconds: int | None = None
     view: Annotated[View, Field(discriminator="type")]
