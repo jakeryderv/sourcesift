@@ -28,6 +28,7 @@ For a development checkout, prefix commands with `uv run --locked`.
 | `--reasoning-effort` | Optional model-supported reasoning effort |
 | `--format markdown` | Markdown answer, the default |
 | `--format plain` | Plain-text answer without terminal styling |
+| `--json` | One JSON object: answer, references, notes, usage, and retrieval details |
 | `--debug` | On a model failure, also print the raw provider response to stderr |
 
 The prompt is required. Put `--` before a prompt that starts with a dash.
@@ -40,6 +41,26 @@ Answers, cited references, date windows, and disclosed limitations go to stdout.
 progress messages in the answer stream, and output is buffered until the request
 succeeds. Use shell redirection to save output. Plain rendering removes Markdown
 styling and may reflow text; use Markdown when preserving source formatting matters.
+
+## JSON output
+
+`--json` prints the same `Result` the [SDK](sdk.md) returns as a single JSON object,
+so other programs can use the references without parsing text:
+
+```sh
+ssift ask "Check news" --json | jq '.references[] | {id, title, url}'
+```
+
+| Field | Content |
+|---|---|
+| `answer` | The answer text, with `[S1]`-style citation IDs |
+| `references` | Cited evidence: `id`, `title`, `url`, `publisher`, dates, `kind`, and per-item `limitations` |
+| `limitations` | Notes about coverage, freshness, and retrieval gaps |
+| `selected_sources`, `window` | The catalog sources read and the date window applied |
+| `usage`, `model`, `http_requests` | Model token counts, model ID, and the number of HTTP requests made |
+
+`--format` still controls how the model writes `answer`. Errors are reported on
+stderr with the usual exit codes, and stdout stays empty.
 
 ## Exit codes and troubleshooting
 

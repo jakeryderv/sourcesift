@@ -1,6 +1,7 @@
 """CLI contracts for files/stdin, output streams, formats, and exit statuses."""
 
 import io
+import json
 import subprocess
 import sys
 
@@ -296,3 +297,39 @@ def test_debug_prints_provider_detail_to_stderr(invoke, monkeypatch, capsys, deb
     assert exc.value.code == 1 and out.out == ""
     assert "ssift: Summary." in out.err
     assert ('provider detail: {"raw": "body"}' in out.err) is debug
+
+
+def test_json_output_is_the_result_contract(invoke, monkeypatch, capsys):
+    result = Result(
+        answer="Library approved [S1].",
+        model="example/test",
+        limitations=("Only the feed summary was retrieved.",),
+        references=(
+            {
+                "id": "S1",
+                "title": "New library",
+                "url": "https://example.com/library",
+                "requested_url": "https://example.com/feed",
+                "retrieved_from": "https://example.com/feed",
+                "publisher": "example.com",
+                "source_id": "example",
+                "retrieved_at": "2026-01-02T03:04:05Z",
+                "kind": "feed_summary",
+            },
+        ),
+        selected_sources=("example",),
+        http_requests=2,
+    )
+    monkeypatch.setattr(cli.SourceSift, "run_sync", lambda *a, **k: result)
+    monkeypatch.setattr(cli, "load_settings", lambda *args, **kwargs: Settings())
+    invoke("ask", "task", "--json")
+    out = capsys.readouterr()
+    assert out.err == ""
+    data = json.loads(out.out)
+    assert Result.model_validate(data) == result
+    assert data["answer"] == "Library approved [S1]."
+    assert data["references"][0]["url"] == "https://example.com/library"
+    assert data["limitations"] == ["Only the feed summary was retrieved."]
+    assert set(data["usage"]) == {"requests", "input_tokens", "output_tokens"}
+    # The answer keeps its citation IDs; references are data, not appended text.
+    assert "References:" not in out.out

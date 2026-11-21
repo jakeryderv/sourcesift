@@ -68,6 +68,7 @@ def ask(
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"]
     | None = None,
     format: Literal["markdown", "plain"] = "markdown",
+    json: bool = False,
     debug: bool = False,
 ) -> None:
     """Run a request with optional files and piped UTF-8 stdin.
@@ -79,6 +80,7 @@ def ask(
         model: OpenRouter provider/model ID.
         reasoning_effort: Optional reasoning effort supported by the selected model.
         format: Answer format, Markdown by default.
+        json: Print one JSON object with the answer, references, notes, and usage.
         debug: On a model failure, also print the raw provider response to stderr.
     """
     overrides = {}
@@ -98,7 +100,11 @@ def ask(
         if debug and exc.detail:
             print(f"ssift: provider detail: {exc.detail}", file=sys.stderr)
         raise
-    sys.stdout.write(render_result(result, format))
+    sys.stdout.write(
+        result.model_dump_json(indent=2) + "\n"
+        if json
+        else render_result(result, format)
+    )
     sys.stdout.flush()
 
 
