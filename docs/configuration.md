@@ -147,8 +147,14 @@ One-off `ask` continues to load files for each request.
 |---|---:|---|
 | `max_session_turns` | 20 | Maximum completed turns before starting fresh |
 | `max_session_bytes` | 524288 | Serialized history/evidence budget, also checked with the next request payload |
+| `feed_cache_seconds` | 600 | How long a conversation reuses a fetched feed before requesting it again; `0` disables |
 
 All research budgets above apply per turn, including newly collected evidence.
+Within one conversation a feed fetched in the last `feed_cache_seconds` is reused
+without a new request, and its evidence keeps the original retrieval time. Articles
+are always retrieved again. The cache is held in memory and cleared by `/new`;
+`ssift ask` does not use it.
+
 History and retained evidence are separately bounded by `max_session_bytes`.
 Bytes are a conservative application guard, not a tokenizer or a guarantee that
 every provider context window fits. Over-limit turns fail without changing completed

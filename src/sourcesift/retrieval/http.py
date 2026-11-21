@@ -3,7 +3,8 @@
 import asyncio
 import ipaddress
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
 from typing import Self
 from urllib.parse import urljoin, urlsplit
@@ -27,6 +28,34 @@ class Page:
     url: str
     body: bytes
     content_type: str
+    # When the bytes were fetched; earlier than now for a cached page.
+    fetched_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+class PageCache:
+    """Conversation-scoped pages so follow-up turns do not refetch unchanged feeds.
+
+    Held in memory by one session and cleared when it resets. Entries expire
+    after ``ttl_seconds``; zero disables caching.
+    """
+
+    def __init__(self, ttl_seconds: float) -> None:
+        self.ttl = timedelta(seconds=ttl_seconds)
+        self._pages: dict[str, Page] = {}
+
+    def get(self, url: str) -> Page | None:
+        page = self._pages.get(url)
+        if page is not None and datetime.now(UTC) - page.fetched_at >= self.ttl:
+            del self._pages[url]
+            return None
+        return page
+
+    def set(self, url: str, page: Page) -> None:
+        if self.ttl > timedelta(0):
+            self._pages[url] = page
+
+    def clear(self) -> None:
+        self._pages.clear()
 
 
 async def public_address(host: str, port: int) -> str:

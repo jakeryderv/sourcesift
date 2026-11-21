@@ -84,6 +84,7 @@ class Limits(Contract):
     max_response_bytes: int = Field(default=2097152, ge=1024, le=10485760)
     max_item_chars: int = Field(default=10000, ge=100, le=50000)
     max_evidence_chars: int = Field(default=60000, ge=100, le=300000)
+    feed_cache_seconds: float = Field(default=600, ge=0, le=86400, allow_inf_nan=False)
     max_session_turns: int = Field(default=20, ge=1, le=100)
     max_session_bytes: int = Field(default=524288, ge=1024, le=10485760)
 

@@ -89,6 +89,32 @@ class ContextScreen(ModalScreen[None]):
         yield Footer()
 
 
+class EvidenceScreen(ModalScreen[None]):
+    """List retained evidence by citation ID; titles are retrieved text, not markup."""
+
+    BINDINGS: ClassVar = [Binding("escape", "dismiss", "Close")]
+
+    def __init__(self, session: Session) -> None:
+        super().__init__()
+        self.session = session
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="context-panel"):
+            yield Static("Retained evidence · Esc to close", classes="label")
+            if not self.session.evidence:
+                yield Static("No evidence yet. Ask a research question first.")
+            for item in self.session.evidence:
+                date = item.published_at or item.updated_at
+                yield Static(
+                    f"[{item.id}] {' '.join(item.title.split())}\n"
+                    f"{item.publisher} · {item.kind.replace('_', ' ')} · "
+                    f"{date.date().isoformat() if date else 'date unknown'}\n"
+                    f"{item.url}",
+                    markup=False,
+                )
+        yield Footer()
+
+
 class ChatApp(App[None]):
     """A minimal research conversation; model and retrieval logic live in Session."""
 
@@ -401,7 +427,13 @@ class ChatApp(App[None]):
         prompt = editor.text.strip()
         if not prompt:
             return
-        if prompt.startswith("/"):
+        if prompt.split()[0] == "/read":
+            # Becomes an ordinary turn: the model reads the article with its own tool.
+            reading = self._read_prompt(prompt)
+            if reading is None:
+                return
+            prompt = reading
+        elif prompt.startswith("/"):
             if prompt == "/new":
                 await self.action_new_session()
             elif prompt == "/context":
@@ -416,6 +448,8 @@ class ChatApp(App[None]):
                 self.action_show_model()
             elif prompt == "/report":
                 self.action_save_report()
+            elif prompt == "/evidence":
+                self.push_screen(EvidenceScreen(self.session))
             else:
                 self._status("Unknown command. Type / to see commands, or /help.")
                 return
@@ -574,6 +608,23 @@ class ChatApp(App[None]):
         self._files_ready = False
         self._file_error = ""
         self._status("New session · context reloaded")
+
+    def _read_prompt(self, command: str) -> str | None:
+        """Turn ``/read S3`` into a request naming that evidence, or explain why not."""
+        arguments = command.split()[1:]
+        wanted = arguments[0].strip("[]").upper() if len(arguments) == 1 else ""
+        item = next((e for e in self.session.evidence if e.id == wanted), None)
+        if item is None:
+            self._status(
+                f"No evidence with ID {wanted}. Use /evidence to list IDs."
+                if wanted
+                else "Usage: /read S3 (use /evidence to list IDs)."
+            )
+            return None
+        return (
+            f"Read [{item.id}] in full ({item.url}) and report what the article "
+            "adds beyond the feed summary, citing it."
+        )
 
     def action_save_report(self) -> None:
         """Save the latest completed turn; the model takes no part in the write."""
