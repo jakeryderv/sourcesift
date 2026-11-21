@@ -41,6 +41,7 @@ from sourcesift.core.session import Session
 from sourcesift.errors import ModelError, SourceSiftError
 from sourcesift.model_catalog import ModelCatalog
 from sourcesift.models import Request, Result, SessionEvent
+from sourcesift.reports import save_report
 from sourcesift.tui_panels import HELP, HelpScreen, ModelScreen
 
 
@@ -413,6 +414,8 @@ class ChatApp(App[None]):
                 self.push_screen(HelpScreen())
             elif prompt == "/model":
                 self.action_show_model()
+            elif prompt == "/report":
+                self.action_save_report()
             else:
                 self._status("Unknown command. Type / to see commands, or /help.")
                 return
@@ -571,6 +574,19 @@ class ChatApp(App[None]):
         self._files_ready = False
         self._file_error = ""
         self._status("New session · context reloaded")
+
+    def action_save_report(self) -> None:
+        """Save the latest completed turn; the model takes no part in the write."""
+        if not self.session.turns:
+            self._status("Nothing to save yet; ask a question first.")
+            return
+        prompt, result = self.session.turns[-1]
+        try:
+            path = save_report(prompt, result, self.session.settings.reports.directory)
+        except SourceSiftError as exc:
+            self._status(str(exc))
+        else:
+            self._status(f"Report saved to {path}")
 
     def action_show_context(self) -> None:
         self.push_screen(ContextScreen(self.session))

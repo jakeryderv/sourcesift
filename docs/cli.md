@@ -29,6 +29,7 @@ For a development checkout, prefix commands with `uv run --locked`.
 | `--format markdown` | Markdown answer, the default |
 | `--format plain` | Plain-text answer without terminal styling |
 | `--json` | One JSON object: answer, references, notes, usage, and retrieval details |
+| `--report` | Also save a Markdown report; its path is printed to stderr |
 | `--debug` | On a model failure, also print the raw provider response to stderr |
 
 The prompt is required. Put `--` before a prompt that starts with a dash.
@@ -61,6 +62,20 @@ ssift ask "Check news" --json | jq '.references[] | {id, title, url}'
 
 `--format` still controls how the model writes `answer`. Errors are reported on
 stderr with the usual exit codes, and stdout stays empty.
+
+## Reports
+
+`--report` saves the request, answer, references, and notes as a Markdown file and
+prints its path to stderr, so stdout still carries only the answer:
+
+```sh
+ssift ask "Check tech and AI this week" --report
+```
+
+Reports go to the [configured reports directory](configuration.md#reports). Each
+report is a new file named from the UTC time and the first words of the prompt;
+existing files are never replaced. SourceSift writes the file from the finished
+result. The model has no tool for writing or reading files.
 
 ## Exit codes and troubleshooting
 

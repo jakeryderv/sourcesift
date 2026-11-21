@@ -98,6 +98,23 @@ citation-validation repair is allowed within the model-request budget. Individua
 retrieval failures appear as limitations; an entirely unsuccessful research run
 returns an explicit inability to verify current information.
 
+## Reports
+
+```python
+from sourcesift import SourceSift, render_report, save_report
+
+app = SourceSift()
+prompt = "Check tech and AI this week"
+result = app.run_sync(prompt)
+text = render_report(prompt, result)  # Markdown string
+path = save_report(prompt, result, app.settings.reports.directory)
+```
+
+`render_report` returns the request, answer, references, and notes as Markdown.
+`save_report` writes that to a new file, never replacing an existing one, and
+returns the path. A `None` directory means the per-user default described in
+[configuration](configuration.md#reports).
+
 ## Interactive sessions
 
 ```python

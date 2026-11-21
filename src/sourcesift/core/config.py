@@ -42,6 +42,12 @@ class ContextSettings(Contract):
     instructions_file: Path | None = None
 
 
+class ReportsSettings(Contract):
+    """Where explicitly requested reports are saved; the platform default if unset."""
+
+    directory: Path | None = None
+
+
 class SourcesSettings(Contract):
     """Enabled catalog additions and freshness settings; selection stays semantic."""
 
@@ -88,6 +94,7 @@ class Settings(Contract):
     agent: AgentSettings = Field(default_factory=AgentSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
     limits: Limits = Field(default_factory=Limits)
+    reports: ReportsSettings = Field(default_factory=ReportsSettings)
     sources: SourcesSettings = Field(default_factory=SourcesSettings)
 
 
@@ -170,6 +177,11 @@ def load_settings(
             else item
             for item in context["files"]
         ]
+    reports = data.get("reports")
+    if isinstance(reports, dict) and isinstance(reports.get("directory"), str):
+        reports["directory"] = str(
+            path.parent / Path(reports["directory"]).expanduser()
+        )
     env = EnvSettingsSource(_Environment)()
     agent_env = {}
     if "MODEL" in env:

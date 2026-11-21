@@ -5,6 +5,7 @@ from sourcesift.core.config import (
     AgentSettings,
     ContextSettings,
     Limits,
+    ReportsSettings,
     Settings,
     SourcesSettings,
     load_settings,
@@ -25,6 +26,7 @@ from sourcesift.models import (
     SessionEvent,
     Usage,
 )
+from sourcesift.reports import render_report, save_report
 from sourcesift.sources import Source, SourceRegistry
 
 __all__ = [
@@ -36,6 +38,7 @@ __all__ = [
     "Limits",
     "ModelError",
     "Reference",
+    "ReportsSettings",
     "Request",
     "ResearchWindow",
     "Result",
@@ -50,6 +53,8 @@ __all__ = [
     "Usage",
     "hello",
     "load_settings",
+    "render_report",
+    "save_report",
 ]
 
 
