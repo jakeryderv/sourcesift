@@ -2,7 +2,8 @@
 
 `ssift` (or `ssift chat`) opens a Textual terminal interface backed by the same Python research
 runtime as `ssift ask`. It supports follow-ups about retrieved articles, retained
-citations, streamed drafts, and cancellation. Sessions stay in memory.
+citations, streamed drafts, and cancellation. Sessions stay in memory unless you
+[ask for them to be saved](#save-and-continue-a-conversation).
 
 ## Start a conversation
 
@@ -166,6 +167,30 @@ file leaves the current session intact. Use `/model` for session-only model chan
 settings. Configured paths are relative to their TOML file; `--file` paths are
 relative to the working directory. All selected context is sent to the configured
 model through OpenRouter.
+
+## Save and continue a conversation
+
+Nothing about a conversation is written to disk unless you ask:
+
+```sh
+ssift chat --save       # save this conversation after each completed turn
+ssift chat --continue   # reopen the most recently saved one; -c for short
+```
+
+`--continue` shows the earlier turns, keeps their evidence and citation IDs, and
+goes on saving to the same file. Its context is the snapshot taken when the
+conversation started, so `--file` cannot be combined with it; attach files with
+`@` in a message instead. `/new` starts a separate file and leaves the earlier
+conversation in place. Set `[sessions].save = true` in the
+[configuration](configuration.md#saved-conversations) to save every chat.
+
+A saved conversation is one JSON file containing your prompts, the answers, the
+retrieved evidence text, and the text of any attached or configured context
+files. It never contains the API key. The file and its directory are readable
+only by your user account. Delete a file to forget that conversation. Retained
+evidence in a continued conversation is as old as when it was retrieved; ask for
+fresh news to retrieve again. If a turn cannot be saved, the status line says so
+and the turn still completes.
 
 ## History and evidence limits
 

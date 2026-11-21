@@ -150,12 +150,16 @@ def chat(
     model: str | None = None,
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"]
     | None = None,
+    save: bool = False,
+    continue_: Annotated[bool, Parameter(name=("--continue", "-c"))] = False,
     debug: bool = False,
 ) -> None:
-    """Open an in-memory research conversation in the terminal.
+    """Open a research conversation in the terminal; in memory unless saved.
 
     Parameters:
         file: Context file loaded at session start; repeat for multiple files.
+        save: Save this conversation to a file after each completed turn.
+        continue_: Continue the most recently saved conversation.
         config: TOML file; overrides SOURCESIFT_CONFIG and the user default.
         model: OpenRouter provider/model ID.
         reasoning_effort: Optional reasoning effort supported by the selected model.
@@ -173,4 +177,7 @@ def chat(
     if reasoning_effort is not None:
         overrides["reasoning_effort"] = reasoning_effort
     settings = load_settings(config, overrides={"agent": overrides})
-    ChatApp(SourceSift(settings).session(files=file or ()), debug=debug).run()
+    session = SourceSift(settings).session(
+        files=file or (), save=True if save else None, resume=continue_
+    )
+    ChatApp(session, debug=debug).run()

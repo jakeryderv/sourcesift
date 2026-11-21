@@ -132,7 +132,10 @@ print(second.answer, second.references)
 session.reset()  # clears history and reloads configured/initial context files
 ```
 
-Sessions are independent, in-memory objects. `session.turns` returns completed
+Sessions are independent objects, kept in memory by default. `app.session(save=True)`
+writes the conversation to a file after each completed turn, `session.saved_path`
+reports where, and `app.session(resume=True)` continues the most recently saved
+one; see [saving conversations](chat.md#save-and-continue-a-conversation). `session.turns` returns completed
 prompt/result pairs and `session.context` shows the context snapshot. Settings and
 source registration are snapshotted at creation; create a new session to change them.
 Additional `files=` or `Request.context` on a turn become part of its history.

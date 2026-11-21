@@ -98,7 +98,7 @@ task. Ask for clarification when 'the second one' has no clear antecedent.
 
 @dataclass
 class ConversationState:
-    """Private transactional runtime state; never written to disk."""
+    """Private transactional runtime state; a Session writes it only when saving."""
 
     messages: list[ModelMessage] = field(default_factory=list)
     evidence: dict[str, Evidence] = field(default_factory=dict)

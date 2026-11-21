@@ -69,7 +69,7 @@ class Reference(Contract):
 
 
 class Evidence(Reference):
-    """Retrieved text retained in memory for a run or session, never persisted."""
+    """Retrieved text retained for a run or session; written only to a saved session."""
 
     text: str = Field(repr=False)
 

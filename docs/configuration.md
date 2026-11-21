@@ -81,6 +81,19 @@ directory: `$XDG_DATA_HOME/sourcesift/reports/` (normally
 Support/sourcesift/reports/` on macOS, and `%LOCALAPPDATA%\sourcesift\reports\` on
 Windows. The directory is created when the first report is saved.
 
+## Saved conversations
+
+```toml
+[sessions]
+save = false           # true saves every chat without --save
+directory = "sessions" # relative to this TOML file; `~` expands
+```
+
+Chat conversations are kept in memory unless `save` is true or chat is started
+with `--save` or `--continue`. Saved conversations go to `sessions/` in the same
+per-user data directory as reports unless `directory` is set. See the
+[chat guide](chat.md#save-and-continue-a-conversation) for what a file contains.
+
 ## Sources and freshness
 
 ```toml

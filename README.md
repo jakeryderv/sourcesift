@@ -63,7 +63,8 @@ fallback), and **Esc** to cancel. Use `/new` for a new session, `/context` to in
 context, `/model` for session settings, and `/help` for commands. Type `/` for a
 fuzzy command picker or `@` to attach a workspace file. Accept suggestions with
 Tab/Enter, then press Enter again to submit. Bare `ssift` opens chat in a terminal.
-Conversations stay in memory; follow-ups retain evidence and citations. See the
+Conversations stay in memory unless started with `--save`; `--continue` reopens the
+latest saved one. Follow-ups retain evidence and citations. See the
 [chat guide](docs/chat.md).
 
 Context and retrieved evidence are sent to the selected model through OpenRouter.
