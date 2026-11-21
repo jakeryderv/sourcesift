@@ -90,7 +90,10 @@ registration/discovery remains Phase 5.
 Catch `ConfigurationError` or `InputError` to correct local input, and `ModelError`
 for timeout, provider, or unusable-output failures. All derive from
 `SourceSiftError`. Async cancellation propagates normally. SourceSift does not
-retry failed provider requests or print provider response bodies in errors. One
+retry failed provider requests. A `ModelError` message carries the HTTP status and
+OpenRouter's short error message but never the raw response body; that is available
+as `error.detail` with the API key redacted, and the status as `error.status_code`.
+Treat `detail` as untrusted text that can echo request content. One
 citation-validation repair is allowed within the model-request budget. Individual
 retrieval failures appear as limitations; an entirely unsuccessful research run
 returns an explicit inability to verify current information.

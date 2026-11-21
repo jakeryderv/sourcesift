@@ -9,7 +9,14 @@ from dataclasses import dataclass, field
 from openai import APIError, AsyncOpenAI
 from pydantic import ValidationError
 from pydantic_ai import Agent, ModelRetry, RunContext
-from pydantic_ai.exceptions import AgentRunError, ModelAPIError, UserError
+from pydantic_ai.exceptions import (
+    AgentRunError,
+    ModelAPIError,
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+    UsageLimitExceeded,
+    UserError,
+)
 from pydantic_ai.messages import (
     AgentStreamEvent,
     FunctionToolCallEvent,
@@ -128,6 +135,51 @@ async def _openrouter_model(settings: Settings) -> AsyncGenerator[Model]:
         yield OpenRouterModel(
             settings.agent.model, provider=OpenRouterProvider(openai_client=client)
         )
+
+
+def _redact(text: str, settings: Settings) -> str:
+    key = settings.agent.api_key.get_secret_value() if settings.agent.api_key else ""
+    return text.replace(key, "[redacted]") if key.strip() else text
+
+
+def _provider_reason(body: object) -> str:
+    """Return OpenRouter's own short error message and upstream provider name.
+
+    Only the documented ``message`` and ``metadata.provider_name`` fields are
+    used; any other body shape yields nothing rather than arbitrary content.
+    """
+    error = body.get("error", body) if isinstance(body, dict) else None
+    if not isinstance(error, dict):
+        return ""
+    message = error.get("message")
+    reason = " ".join(message.split())[:200] if isinstance(message, str) else ""
+    metadata = error.get("metadata")
+    provider = metadata.get("provider_name") if isinstance(metadata, dict) else None
+    if isinstance(provider, str) and provider.strip() and reason:
+        reason = f"{' '.join(provider.split())[:60]}: {reason}"
+    return reason
+
+
+def _provider_error(exc: ModelAPIError, settings: Settings) -> ModelError:
+    """Summarize a provider failure; the raw body goes to ``detail`` only."""
+    detail = _redact(str(exc), settings)
+    if not isinstance(exc, ModelHTTPError):
+        return ModelError(
+            "Could not reach OpenRouter; check the network connection and retry.",
+            detail=detail,
+        )
+    status = exc.status_code
+    if status in (401, 403):
+        message = "OpenRouter rejected access; check the API key and model permissions."
+    elif status == 402:
+        message = "OpenRouter requires available credits for this request."
+    elif status == 429:
+        message = "OpenRouter rate limit reached; retry later."
+    else:
+        message = "OpenRouter could not complete the request; check the model and service availability."
+    reason = _redact(_provider_reason(exc.body), settings)
+    summary = f"HTTP {status}: {reason}" if reason else f"HTTP {status}"
+    return ModelError(f"{message} ({summary})", status_code=status, detail=detail)
 
 
 def validate_model_access(settings: Settings) -> None:
@@ -260,21 +312,23 @@ async def run_agent(
             "Model request timed out; try again or adjust limits.timeout_seconds."
         ) from None
     except ModelAPIError as exc:
-        status = getattr(exc, "status_code", None)
-        if status in (401, 403):
-            message = (
-                "OpenRouter rejected access; check the API key and model permissions."
-            )
-        elif status == 402:
-            message = "OpenRouter requires available credits for this request."
-        elif status == 429:
-            message = "OpenRouter rate limit reached; retry later."
-        else:
-            message = "OpenRouter could not complete the request; check the model and service availability."
-        raise ModelError(message) from None
-    except (APIError, AgentRunError, UserError, ValidationError):
+        raise _provider_error(exc, settings) from None
+    except UsageLimitExceeded as exc:
         raise ModelError(
-            "Model request failed or returned an unusable response; check the model and retry."
+            "The request reached its model request or tool call limit before finishing; "
+            "narrow the request or raise limits.max_model_requests or limits.max_tool_calls.",
+            detail=_redact(str(exc), settings),
+        ) from None
+    except UnexpectedModelBehavior as exc:
+        raise ModelError(
+            "Model returned an unusable response (malformed output, or citations that "
+            "still failed the check after one repair); retry or choose another model.",
+            detail=_redact(str(exc), settings),
+        ) from None
+    except (APIError, AgentRunError, UserError, ValidationError) as exc:
+        raise ModelError(
+            "Model request failed or returned an unusable response; check the model and retry.",
+            detail=_redact(f"{type(exc).__name__}: {exc}", settings),
         ) from None
     answer = response.output.strip()
     if not answer:

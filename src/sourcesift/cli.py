@@ -15,6 +15,7 @@ from rich.markdown import Markdown
 from sourcesift import (
     ConfigurationError,
     InputError,
+    ModelError,
     Request,
     SourceSift,
     SourceSiftError,
@@ -67,6 +68,7 @@ def ask(
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"]
     | None = None,
     format: Literal["markdown", "plain"] = "markdown",
+    debug: bool = False,
 ) -> None:
     """Run a request with optional files and piped UTF-8 stdin.
 
@@ -77,6 +79,7 @@ def ask(
         model: OpenRouter provider/model ID.
         reasoning_effort: Optional reasoning effort supported by the selected model.
         format: Answer format, Markdown by default.
+        debug: On a model failure, also print the raw provider response to stderr.
     """
     overrides = {}
     if model is not None:
@@ -89,7 +92,12 @@ def ask(
     except ValidationError:
         raise InputError("Provide a nonempty prompt.") from None
     stdin = None if sys.stdin.isatty() else sys.stdin.buffer
-    result = SourceSift(settings).run_sync(request, files=file or (), stdin=stdin)
+    try:
+        result = SourceSift(settings).run_sync(request, files=file or (), stdin=stdin)
+    except ModelError as exc:
+        if debug and exc.detail:
+            print(f"ssift: provider detail: {exc.detail}", file=sys.stderr)
+        raise
     sys.stdout.write(render_result(result, format))
     sys.stdout.flush()
 
@@ -129,6 +137,7 @@ def chat(
     model: str | None = None,
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"]
     | None = None,
+    debug: bool = False,
 ) -> None:
     """Open an in-memory research conversation in the terminal.
 
@@ -137,6 +146,7 @@ def chat(
         config: TOML file; overrides SOURCESIFT_CONFIG and the user default.
         model: OpenRouter provider/model ID.
         reasoning_effort: Optional reasoning effort supported by the selected model.
+        debug: On a model failure, also show the raw provider response.
     """
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise InputError(
@@ -150,4 +160,4 @@ def chat(
     if reasoning_effort is not None:
         overrides["reasoning_effort"] = reasoning_effort
     settings = load_settings(config, overrides={"agent": overrides})
-    ChatApp(SourceSift(settings).session(files=file or ())).run()
+    ChatApp(SourceSift(settings).session(files=file or ()), debug=debug).run()

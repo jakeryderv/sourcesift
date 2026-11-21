@@ -281,3 +281,18 @@ def test_bare_terminal_opens_chat_but_help_still_works(monkeypatch, capsys):
 def test_bare_nonterminal_shows_help(invoke, capsys):
     invoke()
     assert "Usage:" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("debug", [False, True])
+def test_debug_prints_provider_detail_to_stderr(invoke, monkeypatch, capsys, debug):
+    def fail(self, request, *, files, stdin):
+        raise ModelError("Summary.", status_code=503, detail='{"raw": "body"}')
+
+    monkeypatch.setattr(cli.SourceSift, "run_sync", fail)
+    monkeypatch.setattr(cli, "load_settings", lambda *args, **kwargs: Settings())
+    with pytest.raises(SystemExit) as exc:
+        invoke("ask", "task", *(["--debug"] if debug else []))
+    out = capsys.readouterr()
+    assert exc.value.code == 1 and out.out == ""
+    assert "ssift: Summary." in out.err
+    assert ('provider detail: {"raw": "body"}' in out.err) is debug

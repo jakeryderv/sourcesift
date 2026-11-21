@@ -38,7 +38,7 @@ from sourcesift.completion import (
 from sourcesift.core.config import AgentSettings, ContextSettings
 from sourcesift.core.context import prepare_request
 from sourcesift.core.session import Session
-from sourcesift.errors import SourceSiftError
+from sourcesift.errors import ModelError, SourceSiftError
 from sourcesift.model_catalog import ModelCatalog
 from sourcesift.models import Request, Result, SessionEvent
 from sourcesift.tui_panels import HELP, HelpScreen, ModelScreen
@@ -121,9 +121,16 @@ class ChatApp(App[None]):
         Binding("enter,tab", "complete", show=False, priority=True),
     ]
 
-    def __init__(self, session: Session, *, workspace: Path | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        workspace: Path | None = None,
+        debug: bool = False,
+    ) -> None:
         super().__init__()
         self.session = session
+        self.debug_errors = debug
         self._turn_worker: Worker | None = None
         self._draft_widget: Static | None = None
         self._draft = ""
@@ -490,7 +497,11 @@ class ChatApp(App[None]):
             raise
         except SourceSiftError as exc:
             if self._draft_widget is not None:
-                self._draft_widget.update(str(exc))
+                message = str(exc)
+                if self.debug_errors and isinstance(exc, ModelError) and exc.detail:
+                    message += f"\n\nProvider detail: {exc.detail}"
+                # Text avoids interpreting brackets in provider text as markup.
+                self._draft_widget.update(Text(message))
             self._status("Turn failed · previous conversation preserved")
         except Exception:  # noqa: BLE001 -- UI boundary must not expose provider internals
             # Never render provider response bodies, credentials, or tracebacks.

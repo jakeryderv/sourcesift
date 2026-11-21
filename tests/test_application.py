@@ -151,9 +151,66 @@ def test_provider_errors_are_sanitized(settings, install_model, status, message)
     install_model(respond)
     with pytest.raises(ModelError, match=message) as exc:
         SourceSift(settings).run_sync("task")
+    assert f"(HTTP {status})" in str(exc.value)
+    assert exc.value.status_code == status
     assert "private-key" not in str(exc.value)
     assert "document contents" not in str(exc.value)
     assert count == 1
+
+
+def test_provider_reason_is_summarized_and_body_kept_for_debugging(
+    settings, install_model
+):
+    body = {
+        "error": {
+            "message": "No endpoints found\n for example/test with key private-key.",
+            "code": 404,
+            "metadata": {"provider_name": "Example", "raw": "upstream document text"},
+        }
+    }
+
+    def respond(messages, info):
+        raise ModelHTTPError(404, "example/test", body)
+
+    install_model(respond)
+    with pytest.raises(ModelError) as exc:
+        SourceSift(settings).run_sync("task")
+    message = str(exc.value)
+    assert "HTTP 404: Example: No endpoints found for example/test" in message
+    assert "private-key" not in message and "upstream document" not in message
+    assert exc.value.status_code == 404
+    assert exc.value.detail is not None
+    assert "upstream document text" in exc.value.detail
+    assert "private-key" not in exc.value.detail and "[redacted]" in exc.value.detail
+
+
+def test_provider_reason_is_bounded_and_ignores_unknown_shapes(settings):
+    long = {"message": "x" * 500}
+    assert len(runtime._provider_reason(long)) == 200
+    assert runtime._provider_reason({"error": long}) == "x" * 200
+    for body in (None, "text", ["list"], {"error": "text"}, {"message": 3}):
+        assert runtime._provider_reason(body) == ""
+
+
+def test_connection_and_budget_failures_are_distinguished(settings, install_model):
+    from pydantic_ai.exceptions import ModelAPIError, UsageLimitExceeded
+
+    def unreachable(messages, info):
+        raise ModelAPIError("example/test", "Connection error private-key")
+
+    install_model(unreachable)
+    with pytest.raises(ModelError, match="Could not reach OpenRouter") as exc:
+        SourceSift(settings).run_sync("task")
+    assert exc.value.status_code is None
+    assert exc.value.detail == "Connection error [redacted]"
+
+    def over_budget(messages, info):
+        raise UsageLimitExceeded("The next request would exceed the request_limit")
+
+    install_model(over_budget)
+    with pytest.raises(ModelError, match=r"limits\.max_model_requests") as exc:
+        SourceSift(settings).run_sync("task")
+    assert "request_limit" in (exc.value.detail or "")
 
 
 def test_missing_configuration_and_invalid_request(settings):

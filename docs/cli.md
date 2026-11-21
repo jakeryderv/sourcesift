@@ -28,6 +28,7 @@ For a development checkout, prefix commands with `uv run --locked`.
 | `--reasoning-effort` | Optional model-supported reasoning effort |
 | `--format markdown` | Markdown answer, the default |
 | `--format plain` | Plain-text answer without terminal styling |
+| `--debug` | On a model failure, also print the raw provider response to stderr |
 
 The prompt is required. Put `--` before a prompt that starts with a dash.
 Configured background, explicit files, and piped stdin can be combined; see
@@ -52,6 +53,10 @@ styling and may reflow text; use Markdown when preserving source formatting matt
 
 Missing `OPENROUTER_API_KEY` or model selection is diagnosed before inference.
 Provider authentication failures and rate limits fail without automatic retries.
+A model failure reports the HTTP status and OpenRouter's own short error message,
+for example `(HTTP 404: No endpoints found for …)`. The raw provider response is
+left out because it can echo request content; add `--debug` to print it to stderr
+with the API key redacted. `ssift chat --debug` shows it in the failed turn.
 Do not put API keys in prompts, files, CLI flags, or committed configuration.
 
 Research uses the [registered source catalog](research.md); there are no topic or
