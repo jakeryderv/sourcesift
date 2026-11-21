@@ -216,9 +216,12 @@ text = render_report(prompt, result)  # Markdown string
 path = save_report(prompt, result, app.settings.reports.directory)
 ```
 
-`render_report` returns the request, answer, references, and notes as Markdown.
-`save_report` writes that to a new file, never replacing an existing one, and
-returns the path. A `None` directory means the per-user default described in
+`render_report` returns the request, answer, visuals, references, and notes as
+Markdown. Tables and headline figures are written out; a chart or map is replaced
+by the rows it was drawn from unless you supply a picture of it.
+`save_report(..., images={0: png_bytes})` saves a PNG for the visual at that
+position in `result.blocks` beside the report and links it. `save_report` writes
+a new file, never replacing an existing one, and returns the path. A `None` directory means the per-user default described in
 [configuration](configuration.md#reports).
 
 ## Interactive sessions

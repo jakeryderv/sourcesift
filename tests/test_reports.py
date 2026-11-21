@@ -63,6 +63,103 @@ def test_report_contains_request_answer_references_and_notes():
     assert "New \\[library\\] \\# Injected heading" in text
 
 
+TABLE = {
+    "name": "Debt",
+    "columns": [{"name": "Date", "kind": "time"}, {"name": "Total", "unit": "USD"}],
+    "rows": [["2026-10-13", 38000000000100.5], ["2026-10-14", 38000000000300.5]],
+}
+PNG = b"\x89PNG\r\n\x1a\n" + b"pixels"
+
+
+def block(widget, view, table=TABLE):
+    return {
+        "widget": widget,
+        "evidence_ids": ["S1"],
+        "source_id": "us-treasury",
+        "options": {},
+        "table": table,
+        "view": view,
+    }
+
+
+def with_visuals(**changes):
+    figure = {"type": "figure", "title": "Debt [chart]", "data": [{"type": "scatter"}]}
+    items = [
+        {"label": "Total", "value": 38000000000300.5, "unit": "USD", "change": 200.0},
+        {"label": "Sky", "value": "Clear"},
+        {"label": "Humidity", "value": 65, "unit": "%"},
+    ]
+    return result(
+        blocks=(
+            block("chart", figure),
+            block("stats", {"type": "stat", "title": "Latest", "items": items}),
+            block(
+                "table",
+                {"type": "table", "title": "Rows"}
+                | {key: TABLE[key] for key in ("columns", "rows")},
+            ),
+        ),
+        **changes,
+    )
+
+
+def test_report_writes_visuals_as_tables_lists_and_images():
+    text = render_report("Chart the debt", with_visuals(), generated_at=WHEN)
+    # Visuals follow the answer and come before the references.
+    assert (
+        text.index("## Answer") < text.index("## Visuals") < text.index("## References")
+    )
+    table = (
+        "| Date | Total (USD) |\n| --- | ---: |\n"
+        "| 2026-10-13 | 38,000,000,000,100.5 |\n| 2026-10-14 | 38,000,000,000,300.5 |"
+    )
+    # Without a picture, a chart is replaced by the rows it was drawn from.
+    assert (
+        "### Debt \\[chart\\]\n\n*The chart is not included in this report. It was "
+        f"drawn from these rows.*\n\n{table}\n\nData from [S1]." in text
+    )
+    assert (
+        "### Latest\n\n- **Total:** $38,000,000,000,300.5 (change: $200)\n"
+        "- **Sky:** Clear\n- **Humidity:** 65%\n\nData from [S1]." in text
+    )
+    assert f"### Rows\n\n{table}\n\nData from [S1]." in text
+
+    pictured = render_report(
+        "Chart the debt", with_visuals(), generated_at=WHEN, images={0: "r-1.png"}
+    )
+    assert "![Debt \\[chart\\]](r-1.png)\n\nData from [S1]." in pictured
+    assert "not included" not in pictured
+
+    long = TABLE | {"rows": [[f"2026-01-{d:02}", d] for d in range(1, 32)] * 2}
+    figure = {"type": "figure", "title": "", "data": [{"type": "bar"}]}
+    many = render_report("x", result(blocks=(block("chart", figure, long),)))
+    assert "### Visual\n\n" in many and "the first 30 of 62 rows below" in many
+    assert many.count("| 2026-01-") == 30
+
+
+def test_saved_report_keeps_chart_images_beside_it(tmp_path):
+    images = {0: PNG, 1: PNG, 7: PNG, -1: PNG}
+    path = save_report(
+        "Chart the debt", with_visuals(), tmp_path, generated_at=WHEN, images=images
+    )
+    # Only a figure gets a picture; other positions are ignored.
+    picture = tmp_path / f"{path.stem}-1.png"
+    assert picture.read_bytes() == PNG
+    assert {p.name for p in tmp_path.iterdir()} == {path.name, picture.name}
+    assert f"]({picture.name})" in path.read_text(encoding="utf-8")
+    again = save_report(
+        "Chart the debt", with_visuals(), tmp_path, generated_at=WHEN, images=images
+    )
+    assert again.name == f"{path.stem}-2.md"
+    assert (tmp_path / f"{path.stem}-2-1.png").is_file()
+
+    # Something that is not a PNG, or is too large, is left out.
+    for bad in (b"<svg onload=x>", PNG + b"0" * 4_000_000):
+        plain = save_report("other", with_visuals(), tmp_path, images={0: bad})
+        assert "not included" in plain.read_text(encoding="utf-8")
+        assert not list(tmp_path.glob(f"{plain.stem}-*.png"))
+
+
 def test_report_omits_empty_sections_and_shortens_long_titles():
     text = render_report(
         "word " * 40, result(references=(), limitations=(), selected_sources=())

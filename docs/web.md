@@ -44,8 +44,10 @@ The page opens in your default browser. The server stops with Ctrl+C.
   with its publisher, kind, dates, and any limitations. The line under an answer
   ("2 sources · 1 note") expands to the same references and the answer's notes.
 - **Sources.** Browse the catalog and choose which sources this chat may use.
-- **Copy and Save report** under each answer; a report is a Markdown
-  [file](cli.md).
+- **Copy** puts the answer's text on the clipboard. **Save report** writes a
+  Markdown [report](cli.md#reports) of that answer to your reports folder, with
+  tables and figures written in and each chart and map saved beside it as a PNG
+  image on a white background and linked from the report.
 - **New chat.** Starts a conversation with every source enabled.
 
 Reloading the page keeps the conversation while the server is running.

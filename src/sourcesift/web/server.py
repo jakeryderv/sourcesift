@@ -7,6 +7,7 @@ per-launch token and, when the browser sends one, a matching Origin.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import re
@@ -36,6 +37,8 @@ from sourcesift.tui_panels import source_kind
 
 MAX_SESSIONS = 8
 MAX_BODY_BYTES = 1_048_576
+# Saving a report may carry a picture of each chart drawn in the page.
+MAX_REPORT_BYTES = 24_000_000
 # Radar imagery comes from one fixed service. This server looks up the current
 # frame; the browser then loads map and radar tiles itself.
 RADAR_INDEX = "https://api.rainviewer.com/public/weather-maps.json"
@@ -91,7 +94,11 @@ class Guard:
                 supplied.encode(), f"Bearer {self.token}".encode()
             ):
                 problem = "Open the link printed by ssift web."
-            elif int(request.headers.get("content-length") or 0) > MAX_BODY_BYTES:
+            elif int(request.headers.get("content-length") or 0) > (
+                MAX_REPORT_BYTES
+                if request.url.path.endswith("/report")
+                else MAX_BODY_BYTES
+            ):
                 problem = "Request is too large."
         if problem is not None:
             await JSONResponse({"error": problem}, 403, _HEADERS)(scope, receive, send)
@@ -253,12 +260,33 @@ class Api:
         session = self._session(request)
         if not session.turns:
             raise InputError("Nothing to save yet; ask a question first.")
-        index = (await self._body(request)).get("turn", len(session.turns) - 1)
+        body = await self._body(request)
+        index = body.get("turn", len(session.turns) - 1)
         if not isinstance(index, int) or not 0 <= index < len(session.turns):
             raise InputError("There is no such answer to save.")
         prompt, result = session.turns[index]
-        path = save_report(prompt, result, session.settings.reports.directory)
-        return JSONResponse({"path": str(path)})
+        # The page may send a PNG of each chart it drew, keyed by its position.
+        sent = body.get("images", {})
+        images: dict[int, bytes] = {}
+        prefix = "data:image/png;base64,"
+        try:
+            for key, value in sent.items():
+                if not value.startswith(prefix):
+                    raise ValueError
+                images[int(key)] = base64.b64decode(
+                    value.removeprefix(prefix), validate=True
+                )
+        except (AttributeError, TypeError, ValueError):
+            raise InputError("The chart images could not be read.") from None
+        path = save_report(
+            prompt, result, session.settings.reports.directory, images=images
+        )
+        pictures = [
+            name
+            for key in sorted(images)
+            if (path.parent / (name := f"{path.stem}-{key + 1}.png")).is_file()
+        ]
+        return JSONResponse({"path": str(path), "images": pictures})
 
     async def radar_tiles(self, request: Request) -> Response:
         """Where the newest radar frame's tiles are, looked up every few minutes."""
