@@ -367,7 +367,7 @@ and completion criteria belong in [roadmap.md](roadmap.md).
 **Status: proposed, not implemented.** This section is a draft for discussion. It
 would make a local web app the main interface, keep `ssift ask`, retire the Textual
 chat once the web app covers the same ground, and turn the SDK into the way
-SourceSift is extended.
+SourceSift is extended: typed sources and widgets written in Python.
 
 ### Goals
 
@@ -380,61 +380,94 @@ SourceSift is extended.
 Not goals: a hosted service, a general dashboard builder, or letting the model
 write code or markup that the page runs.
 
-### Three additions
+### Three layers
+
+Sources and widgets never refer to each other. Both are written against a small
+shared set of typed data shapes, so any widget can show any source's data of a
+shape it accepts.
 
 ```text
-Typed data source ──► evidence (text the model reads and cites)
-                 └──► display blocks (data the page draws)
-                 └──► refresh recipe (how the page re-fetches, without the model)
+Source ──produces──► Data shape ◄──accepts── Widget ──renders as──► page primitive
+(weather, prices)    (TimeSeries, …)         (line chart, …)        (chart, map, table, stat)
 ```
 
-**1. Typed data sources.** Today an API source takes a free-text query. A data
-source instead declares its parameters as a model and returns structured results:
+**1. Data shapes.** The shared vocabulary, kept deliberately small:
+
+| Shape | Holds |
+|---|---|
+| `TimeSeries` | Named series of timestamped values with a unit |
+| `Table` | Typed columns and rows |
+| `Stats` | A few labeled values, each with an optional unit and change |
+| `GeoPoints` | Located items with labels and optional values |
+
+A source may also define a shape of its own (a `Forecast`, say) when the generic
+ones lose too much; only widgets written for that shape can show it.
+
+**2. Sources.** A typed source declares its parameters and what it returns. One
+fetch yields the text the model reads and cites, plus the same data as shapes:
 
 ```python
-class WeatherParams(Contract):
-    place: str = Field(min_length=1, max_length=80)
-    days: int = Field(default=3, ge=1, le=7)
+class DebtParams(Contract):
+    days: int = Field(default=365, ge=1, le=3650)
 
 
-class DataResult(Contract):
-    evidence: tuple[ParsedItem, ...]        # text for the model, cited as [S1]
-    blocks: tuple[DisplayBlock, ...] = ()   # optional visuals built from the same data
-    refresh_seconds: int | None = None      # how often a client may re-fetch; None = static
-
-
-class DataSource(Protocol):
-    source: Source                          # catalog entry: id, name, description
-    params: type[Contract]                  # validated before any request is made
-
-    async def fetch(self, params: Contract, context: FetchContext) -> DataResult: ...
+@source(
+    id="us-treasury-debt",
+    name="US public debt",
+    description="Total US public debt outstanding by day.",
+    params=DebtParams,
+    returns=(TimeSeries,),
+    refresh_seconds=None,           # static; a number lets the page re-fetch
+)
+async def debt(params: DebtParams, context: FetchContext) -> SourceResult:
+    page = await context.get(TREASURY_URL.format(days=params.days))
+    series = parse_debt(page)
+    return SourceResult(evidence=[summarize(series, page)], data=[series])
 ```
 
 `FetchContext` supplies the bounded `get(url)`, the clock, and the date window, so
-a data source cannot reach the network any other way. The model keeps using one
-tool, `query_source(source_id, params)`; the catalog it sees includes each
-source's parameter schema, and invalid parameters come back as a note it can
-correct. The existing Hacker News and Treasury adapters become data sources.
+a source cannot reach the network any other way. Each returned data object is tied
+to the citation ID of its evidence. The existing Hacker News and Treasury adapters
+become typed sources; feed sources stay as they are.
 
-**2. Display blocks.** A small fixed set of shapes the page knows how to draw:
+**3. Widgets.** A widget declares which shape it accepts, the options the model
+may set, and how to turn data plus options into one of the page's primitives:
 
-| Block | Holds | Example |
-|---|---|---|
-| `chart` | One or more named series over time or categories, with a unit | Debt over the last year; a stock's day |
-| `map` | A center, zoom, markers, and an optional overlay from an allowlist | Forecast location with a radar layer |
-| `table` | Columns and rows | Exchange rates |
-| `stat` | A few labeled values with optional change | Current temperature, high, low |
+```python
+class LineOptions(Contract):
+    title: str = Field(default="", max_length=80)
+    log_scale: bool = False
 
-Every block carries the citation ID of the evidence it was built from. Blocks are
-created only by data sources, never by the model: the model decides *whether* a
-visual appears by citing that evidence, and `Result.blocks` lists the blocks whose
-evidence the answer cites, exactly as `Result.references` does for references.
-The model therefore cannot put an invented number into a chart.
 
-**3. Refresh without the model.** A block from a source with `refresh_seconds`
-can be re-fetched by the page on a timer through `app.fetch_data(source_id,
-params)`. That call runs the data source directly: same parameters, same bounded
-fetcher, no model request and no token cost. The server enforces the interval.
+@widget(id="line-chart", description="Values over time.", accepts=TimeSeries, options=LineOptions)
+def line_chart(data: TimeSeries, options: LineOptions) -> Chart:
+    return Chart(title=options.title or data.name, series=data.series, y_log=options.log_scale)
+```
+
+The page knows four primitives: `chart`, `map`, `table`, and `stat`. A widget is a
+Python function from data to primitives, so new widgets need no browser code.
+A visual the primitives cannot express would need a new primitive in the page.
+
+### How a visual gets into an answer
+
+The model gets a second tool beside `query_source`:
+
+```text
+show(evidence_id="S2", widget="line-chart", options={"title": "US debt, past year"})
+```
+
+- The model chooses *which* widget and its options. Options are validated against
+  the widget's model, and the widget must accept a shape attached to that evidence.
+- The data comes only from what the source returned for that citation. The model
+  cannot pass values, so it cannot put an invented number on screen.
+- The catalog the model sees lists each source's parameter schema and the shapes
+  it returns, and each widget's accepted shape and options.
+- `Result.blocks` holds the rendered primitives in the order shown, each with its
+  citation ID, alongside `Result.references`.
+
+A block from a source with `refresh_seconds` can be re-fetched by the page through
+`app.fetch_data(source_id, params)`. That runs the source and the same widget
+again: no model request and no token cost. The server enforces the interval.
 
 ### The web app
 
@@ -450,7 +483,7 @@ is a thin layer over the existing `Session`:
 | `POST /api/sessions/{id}/report` | Save the latest answer as a report |
 
 - The page is static files shipped in the package: chat, citations with an evidence
-  side panel, the source picker, and renderers for the four blocks. Chart and map
+  side panel, the source picker, and renderers for the four primitives. Chart and map
   libraries are bundled rather than loaded from a CDN.
 - It is installed as an optional extra (`sourcesift[web]`) so the CLI stays light.
 - Because a local server can be reached by any page in the browser, it binds to
@@ -459,35 +492,42 @@ is a thin layer over the existing `Session`:
 
 ### Extension interface
 
-The SDK's job becomes extending SourceSift. The first extension point is the data
-source above; feed sources are already data-only definitions. Built-in data
-sources are registered through the same call a package would use:
+The SDK's job becomes extending SourceSift, in Python. Sources, widgets, and data
+shapes are ordinary typed Python objects, and built-ins are defined exactly the
+way a user's would be:
 
 ```python
-app.register_data_source(WeatherSource())
+# ~/.config/sourcesift/extensions.py, named by [extensions].files in config.toml
+from sourcesift import TimeSeries, source, widget
+
+@source(id="my-metrics", ...)
+async def my_metrics(params, context): ...
+
+@widget(id="sparkline", accepts=TimeSeries, ...)
+def sparkline(data, options): ...
 ```
 
-Package discovery through the `sourcesift.plugins` entry point (section 4) is
-turned on only after at least three built-in data sources have been written
-against this interface without changing it. Until then the interface is
-documented as unstable.
-
-Deliberately not pluggable: the agent loop, the fetcher and its network rules, and
-citation checking. Widgets are not pluggable at first either: a plugin picks from
-the four blocks and ships no browser code. Installed plugins are trusted Python
-running in the application process, so the guarantee that the model has no file or
-shell access describes the built-ins, not arbitrary plugins.
+- An extension file is loaded only when the configuration names it; nothing is
+  picked up from the working directory. It is trusted Python running in the
+  application process, so the guarantee that the model has no file or shell access
+  describes the built-ins, not arbitrary extensions.
+- Package discovery through the `sourcesift.plugins` entry point (section 4) comes
+  after the interface has held still across at least three built-in sources and
+  three widgets. Until then it is documented as unstable.
+- Deliberately not extensible: the agent loop, the fetcher and its network rules,
+  and citation checking.
 
 ### Order of work
 
-1. `DataSource`, `DataResult`, display blocks, and `Result.blocks` in the core;
-   port Hacker News and Treasury. `ssift ask --json` gains `blocks`.
+1. Data shapes, typed sources, widgets, the `show` tool, and `Result.blocks` in
+   the core; port Hacker News and Treasury. `ssift ask --json` gains `blocks`.
 2. `ssift web` with chat, citations, sources, and the `chart` block, shown with
    Treasury debt over time (no API key, no open access question).
-3. A second widget: weather with `stat` and `map`. This is the test of whether
-   the interface is right.
+3. Weather, shown with `stat` and `map` widgets, and the Treasury series shown
+   with a second widget. Reusing widgets across sources is the test of the design.
 4. Stock prices with a live `chart`.
-5. Turn on plugin discovery and rewrite the SDK guide around extension.
+5. Load extension files, then package discovery; rewrite the SDK guide around
+   extending.
 6. Remove the Textual chat.
 
 ### Open questions
@@ -498,10 +538,13 @@ shell access describes the built-ins, not arbitrary plugins.
 - **Stock data.** Free quotes generally require an API key and have usage terms.
   Step 4 needs a provider chosen and a place for user-supplied keys in settings.
 - **One tool or one per source.** A single `query_source` keeps the tool list
-  fixed; a tool per data source gives the model a native schema for each. The
-  proposal picks the single tool and should be revisited if models misuse it.
-- **Placement.** Blocks are listed after the answer, like references. Letting the
-  model place a block inside its prose is possible later with a marker that names
-  a citation ID.
+  fixed; a tool per source gives the model a native schema for each. The proposal
+  picks the single tool and should be revisited if models misuse it.
+- **How small the shape vocabulary can stay.** Generic shapes make widgets
+  reusable but flatten domain detail; a radar map is not a generic `GeoPoints`
+  view. The rule above (generic first, a source-specific shape when needed) needs
+  testing against weather.
+- **Placement.** Blocks are listed after the answer, in the order the model
+  showed them. Placing a block inside the prose is possible later.
 - **Saved conversations.** Whether blocks are stored with a saved conversation
   or rebuilt on reopen.
