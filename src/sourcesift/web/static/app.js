@@ -1,9 +1,22 @@
-import { el } from "/dom.js";
+import { el, formatWhen } from "/dom.js";
 
 const $ = (id) => document.getElementById(id);
 const transcript = $("transcript");
 const scroller = $("scroller");
-const state = { token: "", session: null, busy: false, abort: null, references: new Map(), sources: [], turns: 0 };
+const state = {
+  token: "",
+  session: null,
+  saving: false,
+  formats: [],
+  busy: false,
+  abort: null,
+  references: new Map(),
+  sources: [],
+  artifacts: [],
+  turns: 0,
+  panel: null,
+  shown: null,
+};
 
 let toastTimer = 0;
 function toast(text) {
@@ -28,12 +41,13 @@ async function api(path, { method = "GET", body, signal } = {}) {
   }
   return response;
 }
+const sessionPath = (rest = "") => `/api/sessions/${encodeURIComponent(state.session)}${rest}`;
 
 // Follow new content only while the reader is already at the bottom.
 function nearBottom() { return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120; }
 function follow(wasNear) { if (wasNear) scroller.scrollTop = scroller.scrollHeight; }
 
-// ---- Answer text -------------------------------------------------------------
+// ---- Rendered text -----------------------------------------------------------
 
 function linkCitations(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -54,7 +68,7 @@ function linkCitations(root) {
   for (const link of root.querySelectorAll("a")) { link.target = "_blank"; link.rel = "noopener noreferrer"; }
 }
 
-function setAnswer(node, html) {
+function setRendered(node, html) {
   // Rendered by the server: raw HTML escaped, and only figures as images.
   node.innerHTML = html;
   linkCitations(node);
@@ -73,6 +87,14 @@ function referenceItem(ref) {
   item.append(head, el("div", { class: "meta" }, meta.filter(Boolean).join(" · ")));
   for (const note of ref.limitations) item.append(el("div", { class: "meta" }, `Note: ${note}`));
   return item;
+}
+
+function flash(body, id) {
+  const target = id && body.querySelector(`[data-ref="${CSS.escape(id)}"]`);
+  if (!target) return;
+  target.classList.add("flash");
+  target.scrollIntoView({ block: "center" });
+  setTimeout(() => target.classList.remove("flash"), 1600);
 }
 
 // ---- Activity: what the agent is doing ---------------------------------------
@@ -131,14 +153,165 @@ function createActivity(timed = false) {
   };
 }
 
+// ---- Side panel: evidence, sources, or an artifact ----------------------------
+
+function openPanel(kind, title, build) {
+  state.panel = kind;
+  const panel = $("panel");
+  panel.className = kind === "artifact" ? "wide" : "";
+  $("panel-title").textContent = title;
+  $("panel-actions").replaceChildren();
+  const body = $("panel-body");
+  body.replaceChildren();
+  build(body, $("panel-actions"));
+  panel.hidden = false;
+}
+
+function closePanel() {
+  state.panel = null;
+  state.shown = null;
+  $("panel").hidden = true;
+}
+
+function showEvidence(focus) {
+  openPanel("evidence", "Evidence", (body) => {
+    const refs = [...state.references.values()].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+    if (!refs.length) body.append(el("p", { class: "muted" }, "No evidence yet. Cited sources appear here."));
+    for (const ref of refs) body.append(referenceItem(ref));
+    flash(body, focus);
+  });
+}
+
+function showSources() {
+  openPanel("sources", "Sources for this chat", (body) => {
+    const actions = el("div", { class: "panel-actions" });
+    const all = el("button", { type: "button" }, "All");
+    const none = el("button", { type: "button" }, "None");
+    const apply = el("button", { type: "button", class: "primary" }, "Apply");
+    actions.append(all, none, el("span", { class: "grow" }), apply);
+    body.append(actions);
+    const boxes = [];
+    for (const source of state.sources) {
+      const item = el("div", { class: "item" });
+      const label = el("label");
+      const box = el("input", { type: "checkbox", value: source.id });
+      box.checked = source.enabled;
+      boxes.push(box);
+      const text = el("span");
+      text.append(el("span", { class: "title" }, source.name), " ", el("span", { class: "badge" }, source.kind), el("div", { class: "meta" }, source.description));
+      label.append(box, text);
+      item.append(label);
+      body.append(item);
+    }
+    all.addEventListener("click", () => boxes.forEach((box) => { box.checked = true; }));
+    none.addEventListener("click", () => boxes.forEach((box) => { box.checked = false; }));
+    apply.addEventListener("click", async () => {
+      try {
+        const enabled = boxes.filter((box) => box.checked).map((box) => box.value);
+        const data = await (await api(sessionPath("/sources"), { method: "PUT", body: { enabled } })).json();
+        state.sources = data.sources;
+        toast(`${enabled.length} of ${state.sources.length} sources enabled for this chat`);
+      } catch (error) { toast(error.message); }
+    });
+  });
+}
+
+async function download(artifact, format) {
+  const response = await api(sessionPath(`/artifacts/${artifact.id}/download?format=${format}`));
+  const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") ?? "")?.[1] ?? `${artifact.id}.${format}`;
+  const url = URL.createObjectURL(await response.blob());
+  const link = el("a", { href: url, download: name });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function setArtifacts(artifacts) {
+  state.artifacts = artifacts;
+  const button = $("btn-artifacts");
+  button.hidden = !artifacts.length;
+  button.textContent = artifacts.length > 1 ? `Artifacts (${artifacts.length})` : "Artifact";
+  // Keep an open artifact current after a revision.
+  if (state.panel === "artifact") showArtifact(state.shown);
+}
+
+function showArtifact(id) {
+  const artifact = state.artifacts.find((item) => item.id === id) ?? state.artifacts.at(-1);
+  if (!artifact) { closePanel(); return; }
+  state.shown = artifact.id;
+  openPanel("artifact", artifact.title, (body, tools) => {
+    if (state.artifacts.length > 1) {
+      const pick = el("select", { "aria-label": "Choose an artifact" });
+      for (const item of state.artifacts) {
+        const option = el("option", { value: item.id }, item.title);
+        option.selected = item.id === artifact.id;
+        pick.append(option);
+      }
+      pick.addEventListener("change", () => showArtifact(pick.value));
+      tools.append(pick);
+    }
+    const act = async (button, work) => {
+      button.disabled = true;
+      try { await work(); } catch (error) { toast(error.message); }
+      button.disabled = false;
+    };
+    const copy = el("button", { type: "button", class: "ghost" }, "Copy");
+    copy.title = "Copy the Markdown";
+    copy.addEventListener("click", () => act(copy, async () => {
+      await navigator.clipboard.writeText(artifact.markdown);
+      toast("Markdown copied");
+    }));
+    const save = el("button", { type: "button", class: "ghost" }, "Download");
+    save.title = "A zip with the Quarto file, its references, and its figures";
+    save.addEventListener("click", () => act(save, () => download(artifact, "zip")));
+    tools.append(copy, save);
+    if (state.formats.length) {
+      const pick = el("select", { "aria-label": "Export with Quarto" });
+      pick.append(el("option", { value: "" }, "Export as…"));
+      for (const format of state.formats) pick.append(el("option", { value: format.id }, format.label));
+      pick.addEventListener("change", () => {
+        const format = pick.value;
+        pick.value = "";
+        if (!format) return;
+        toast("Exporting…");
+        act(pick, async () => { await download(artifact, format); toast("Exported"); });
+      });
+      tools.append(pick);
+    }
+
+    const meta = [`Version ${artifact.version}`, `updated ${formatWhen(artifact.updated_at)}`];
+    body.append(el("p", { class: "muted small" }, meta.join(" · ")));
+    const page = el("article", { class: "answer document" });
+    setRendered(page, artifact.html);
+    body.append(page);
+    if (artifact.notes.length) {
+      const notes = el("ul", { class: "notes" });
+      for (const note of artifact.notes) notes.append(el("li", {}, note));
+      body.append(el("h3", { class: "section" }, "Notes"), notes);
+    }
+    const cited = [...new Set([...page.querySelectorAll("[data-cite]")].map((chip) => chip.dataset.cite))];
+    const refs = cited.map((key) => state.references.get(key)).filter(Boolean);
+    if (refs.length) {
+      body.append(el("h3", { class: "section" }, "References"));
+      for (const ref of refs) body.append(referenceItem(ref));
+    }
+  });
+}
+
 // ---- Turns -------------------------------------------------------------------
 
 function fillTurn(node, turn, index) {
   const result = turn.result;
   for (const ref of result.references) state.references.set(ref.id, ref);
   const answer = el("div", { class: "answer" });
-  setAnswer(answer, turn.answer_html);
+  setRendered(answer, turn.answer_html);
   node.append(answer);
+  for (const artifact of result.artifacts) {
+    const card = el("button", { type: "button", class: "artifact-card", "data-artifact": artifact.id });
+    card.append(el("span", { class: "artifact-kind" }, artifact.version > 1 ? "Revised artifact" : "Artifact"), el("strong", {}, artifact.title), el("span", { class: "muted" }, "Open"));
+    node.append(card);
+  }
 
   const foot = el("div", { class: "turn-foot" });
   const meta = el("div", { class: "meta-body" });
@@ -160,16 +333,20 @@ function fillTurn(node, turn, index) {
   copy.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(result.answer); toast("Answer copied"); } catch { toast("Copying is not available here."); }
   });
-  const save = el("button", { type: "button", class: "ghost" }, "Keep as artifact");
-  save.addEventListener("click", async () => {
-    save.disabled = true;
-    try {
-      const data = await (await api(`/api/sessions/${state.session}/artifacts`, { method: "POST", body: { turn: index } })).json();
-      toast(`Artifact saved to ${data.path}`);
-    } catch (error) { toast(error.message); }
-    save.disabled = false;
-  });
-  foot.append(copy, save);
+  foot.append(copy);
+  if (!result.artifacts.length) {
+    const keep = el("button", { type: "button", class: "ghost" }, "Keep as artifact");
+    keep.addEventListener("click", async () => {
+      keep.disabled = true;
+      try {
+        const data = await (await api(sessionPath("/artifacts"), { method: "POST", body: { turn: index } })).json();
+        setArtifacts(data.artifacts);
+        showArtifact(data.id);
+        refreshConversations();
+      } catch (error) { toast(error.message); keep.disabled = false; }
+    });
+    foot.append(keep);
+  }
   node.append(foot, meta);
 }
 
@@ -204,7 +381,7 @@ async function send(prompt) {
   transcript.append(node);
   scroller.scrollTop = scroller.scrollHeight;
   try {
-    const response = await api(`/api/sessions/${state.session}/turns`, { method: "POST", body: { prompt }, signal: state.abort.signal });
+    const response = await api(sessionPath("/turns"), { method: "POST", body: { prompt }, signal: state.abort.signal });
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     let finished = false;
@@ -219,7 +396,7 @@ async function send(prompt) {
         const wasNear = nearBottom();
         if (event.event === "status") activity.status(event.text);
         else if (event.event === "step") activity.step(event.step);
-        else if (event.event === "draft") { activity.status("Writing…"); setAnswer(draft, event.html); }
+        else if (event.event === "draft") { activity.status("Writing…"); setRendered(draft, event.html); }
         else if (event.event === "reset") draft.replaceChildren();
         else if (event.event === "result") {
           draft.remove();
@@ -227,6 +404,12 @@ async function send(prompt) {
           fillTurn(node, event.turn, state.turns);
           state.turns += 1;
           finished = true;
+          $("title").textContent = event.title || "New chat";
+          setArtifacts(event.artifacts);
+          const written = event.turn.result.artifacts.at(-1);
+          if (written) showArtifact(written.id);
+          if (event.save_error) toast(event.save_error);
+          refreshConversations();
         } else if (event.event === "error") throw new Error(event.message);
         follow(wasNear);
       }
@@ -242,64 +425,7 @@ async function send(prompt) {
   }
 }
 
-// ---- Side panel --------------------------------------------------------------
-
-function openPanel(title, build) {
-  $("panel-title").textContent = title;
-  const body = $("panel-body");
-  body.replaceChildren();
-  build(body);
-  $("panel").hidden = false;
-}
-
-function showEvidence(focus) {
-  openPanel("Evidence", (body) => {
-    const refs = [...state.references.values()].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
-    if (!refs.length) body.append(el("p", { class: "muted" }, "No evidence yet. Cited sources appear here."));
-    for (const ref of refs) body.append(referenceItem(ref));
-    const target = focus && body.querySelector(`[data-ref="${CSS.escape(focus)}"]`);
-    if (target) {
-      target.classList.add("flash");
-      target.scrollIntoView({ block: "center" });
-    }
-  });
-}
-
-function showSources() {
-  openPanel("Sources for this chat", (body) => {
-    const actions = el("div", { class: "panel-actions" });
-    const all = el("button", { type: "button" }, "All");
-    const none = el("button", { type: "button" }, "None");
-    const apply = el("button", { type: "button", class: "primary" }, "Apply");
-    actions.append(all, none, el("span", { class: "grow" }), apply);
-    body.append(actions);
-    const boxes = [];
-    for (const source of state.sources) {
-      const item = el("div", { class: "item" });
-      const label = el("label");
-      const box = el("input", { type: "checkbox", value: source.id });
-      box.checked = source.enabled;
-      boxes.push(box);
-      const text = el("span");
-      text.append(el("span", { class: "title" }, source.name), " ", el("span", { class: "badge" }, source.kind), el("div", { class: "meta" }, source.description));
-      label.append(box, text);
-      item.append(label);
-      body.append(item);
-    }
-    all.addEventListener("click", () => boxes.forEach((box) => { box.checked = true; }));
-    none.addEventListener("click", () => boxes.forEach((box) => { box.checked = false; }));
-    apply.addEventListener("click", async () => {
-      try {
-        const enabled = boxes.filter((box) => box.checked).map((box) => box.value);
-        const data = await (await api(`/api/sessions/${state.session}/sources`, { method: "PUT", body: { enabled } })).json();
-        state.sources = data.sources;
-        toast(`${enabled.length} of ${state.sources.length} sources enabled for this chat`);
-      } catch (error) { toast(error.message); }
-    });
-  });
-}
-
-// ---- Startup and input -------------------------------------------------------
+// ---- Conversations -----------------------------------------------------------
 
 function remember(key, value) {
   try {
@@ -308,21 +434,118 @@ function remember(key, value) {
 }
 function recall(key) { try { return sessionStorage.getItem(key); } catch { return null; } }
 
+function showConversation(data) {
+  state.session = data.id;
+  remember("session", data.id);
+  state.sources = data.sources;
+  state.references = new Map();
+  state.turns = 0;
+  closePanel();
+  $("title").textContent = data.title || "New chat";
+  $("model").textContent = data.model || "no model selected";
+  transcript.replaceChildren();
+  if (data.turns.length) data.turns.forEach(renderTurn);
+  else transcript.append($("empty-state").content.cloneNode(true));
+  setArtifacts(data.artifacts);
+  scroller.scrollTop = scroller.scrollHeight;
+  markCurrent();
+  $("prompt").focus();
+}
+
+async function openConversation(body) {
+  if (state.busy) { toast("Stop the running answer before switching chats."); return; }
+  try {
+    showConversation(await (await api("/api/sessions", { method: "POST", body })).json());
+    document.body.classList.remove("side-open");
+  } catch (error) { toast(error.message); }
+}
+
+function markCurrent() {
+  for (const row of $("conversations").children) row.classList.toggle("current", row.dataset.id === state.session);
+}
+
+function conversationRow(item) {
+  const row = el("div", { class: "conversation", "data-id": item.id });
+  const open = el("button", { type: "button", class: "conversation-open" });
+  const detail = [formatWhen(item.updated_at), item.artifacts ? `${item.artifacts} artifact${item.artifacts === 1 ? "" : "s"}` : null];
+  open.append(el("span", { class: "conversation-title" }, item.title || "Untitled"), el("span", { class: "conversation-meta" }, detail.filter(Boolean).join(" · ")));
+  open.addEventListener("click", () => openConversation({ conversation: item.id }));
+  const rename = el("button", { type: "button", class: "ghost row-tool", "aria-label": "Rename" }, "Rename");
+  const remove = el("button", { type: "button", class: "ghost row-tool", "aria-label": "Delete" }, "Delete");
+  rename.addEventListener("click", () => {
+    const field = el("input", { type: "text", class: "rename", value: item.title, maxlength: "120", "aria-label": "Conversation name" });
+    let done = false;
+    const finish = async (save) => {
+      if (done) return;
+      done = true;
+      const title = field.value.trim();
+      if (save && title && title !== item.title) {
+        try {
+          await api(`/api/sessions/${encodeURIComponent(item.id)}`, { method: "PATCH", body: { title } });
+          if (item.id === state.session) $("title").textContent = title;
+        } catch (error) { toast(error.message); }
+      }
+      refreshConversations();
+    };
+    field.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); finish(true); }
+      if (event.key === "Escape") finish(false);
+    });
+    field.addEventListener("blur", () => finish(true));
+    open.replaceWith(field);
+    field.focus();
+    field.select();
+  });
+  // Deleting asks once more in place, because it removes the saved files.
+  remove.addEventListener("click", async () => {
+    if (!remove.classList.contains("confirm")) {
+      remove.classList.add("confirm");
+      remove.textContent = "Delete forever?";
+      setTimeout(() => { remove.classList.remove("confirm"); remove.textContent = "Delete"; }, 4000);
+      return;
+    }
+    if (item.id === state.session && state.busy) { toast("Stop the running answer before deleting."); return; }
+    try {
+      await api(`/api/sessions/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+      if (item.id === state.session) await openConversation({});
+      refreshConversations();
+    } catch (error) { toast(error.message); }
+  });
+  row.append(open, rename, remove);
+  return row;
+}
+
+async function refreshConversations() {
+  if (!state.saving) return;
+  try {
+    const data = await (await api("/api/conversations")).json();
+    $("conversations").replaceChildren(...data.conversations.map(conversationRow));
+    $("side-note").hidden = data.conversations.length > 0;
+    $("side-note").textContent = "Saved chats appear here.";
+    markCurrent();
+  } catch (error) { toast(error.message); }
+}
+
 // Reopen this tab's conversation after a reload, or start one.
-async function openSession() {
+async function start() {
+  const info = await (await api("/api/info")).json();
+  state.saving = info.saving;
+  state.formats = info.export_formats;
+  if (!state.saving) {
+    $("side-note").hidden = false;
+    $("side-note").textContent = "Chats are kept in memory only (started with --no-save).";
+  }
   let data = null;
   const known = recall("session");
   if (known) {
     try { data = await (await api(`/api/sessions/${encodeURIComponent(known)}`)).json(); } catch { data = null; }
   }
   data ??= await (await api("/api/sessions", { method: "POST", body: { resume: true } })).json();
-  state.session = data.id;
-  remember("session", data.id);
-  state.sources = data.sources;
-  $("model").textContent = data.model || "no model selected";
-  data.turns.forEach(renderTurn);
-  scroller.scrollTop = scroller.scrollHeight;
+  showConversation(data);
+  await refreshConversations();
 }
+
+// ---- Input -------------------------------------------------------------------
 
 const input = $("prompt");
 function resize() { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 200)}px`; }
@@ -343,18 +566,20 @@ input.addEventListener("keydown", (event) => {
 });
 document.addEventListener("click", (event) => {
   const chip = event.target.closest("[data-cite]");
-  if (chip) showEvidence(chip.dataset.cite);
+  // Inside an artifact a citation points at that artifact's own reference list.
+  if (chip?.closest("#panel")) flash($("panel-body"), chip.dataset.cite);
+  else if (chip) showEvidence(chip.dataset.cite);
+  const card = event.target.closest("[data-artifact]");
+  if (card) showArtifact(card.dataset.artifact);
   const suggestion = event.target.closest(".suggestion");
   if (suggestion) send(suggestion.textContent);
 });
 $("btn-sources").addEventListener("click", showSources);
 $("btn-evidence").addEventListener("click", () => showEvidence());
-$("panel-close").addEventListener("click", () => { $("panel").hidden = true; });
-$("btn-new").addEventListener("click", () => {
-  if (state.busy) { toast("Stop the running answer before starting a new chat."); return; }
-  remember("session", null);
-  location.reload();
-});
+$("btn-artifacts").addEventListener("click", () => showArtifact(state.shown));
+$("panel-close").addEventListener("click", closePanel);
+$("btn-new").addEventListener("click", () => openConversation({}));
+$("btn-side").addEventListener("click", () => document.body.classList.toggle("side-open"));
 
 // The launch link carries the token in its fragment, which is never sent to a server.
 const fromLink = location.hash.slice(1);
@@ -363,7 +588,8 @@ if (fromLink) {
   history.replaceState(null, "", location.pathname);
 }
 state.token = fromLink || recall("token") || "";
-openSession().then(() => input.focus(), (error) => {
-  $("empty")?.replaceChildren(el("h2", {}, "Not connected"), el("p", { class: "muted" }, error.message));
+start().catch((error) => {
+  transcript.replaceChildren(el("div", { class: "empty" }));
+  transcript.firstChild.append(el("h2", {}, "Not connected"), el("p", { class: "muted" }, error.message));
   $("send").disabled = true;
 });
