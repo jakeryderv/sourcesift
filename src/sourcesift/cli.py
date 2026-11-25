@@ -1,4 +1,4 @@
-"""Composable Cyclopts CLI for single requests."""
+"""Composable Cyclopts CLI: one-off requests and the local web app."""
 
 import io
 import os
@@ -126,10 +126,7 @@ def main() -> None:
     """Run the CLI with documented exit codes and stderr diagnostics."""
     os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
     try:
-        arguments = sys.argv[1:]
-        if not arguments and sys.stdin.isatty() and sys.stdout.isatty():
-            arguments = ["chat"]
-        app(arguments)
+        app(sys.argv[1:])
     except CycloptsError as exc:
         print(f"ssift: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
@@ -180,14 +177,9 @@ def web(
     import socket
     import webbrowser
 
-    try:
-        import uvicorn
+    import uvicorn
 
-        from sourcesift.web.server import create_app
-    except ImportError:
-        raise InputError(
-            'The web app needs extra packages; install "sourcesift[web]".'
-        ) from None
+    from sourcesift.web.server import create_app
 
     overrides = {}
     if model is not None:
@@ -220,44 +212,3 @@ def web(
     uvicorn.Server(uvicorn.Config(application, log_level="warning")).run(
         sockets=[listener]
     )
-
-
-@app.command
-def chat(
-    *,
-    file: Annotated[list[Path] | None, Parameter(name=("--file", "-f"))] = None,
-    config: Path | None = None,
-    model: str | None = None,
-    reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"]
-    | None = None,
-    save: bool = False,
-    continue_: Annotated[bool, Parameter(name=("--continue", "-c"))] = False,
-    debug: bool = False,
-) -> None:
-    """Open a research conversation in the terminal; in memory unless saved.
-
-    Parameters:
-        file: Context file loaded at session start; repeat for multiple files.
-        save: Save this conversation to a file after each completed turn.
-        continue_: Continue the most recently saved conversation.
-        config: TOML file; overrides SOURCESIFT_CONFIG and the user default.
-        model: OpenRouter provider/model ID.
-        reasoning_effort: Optional reasoning effort supported by the selected model.
-        debug: On a model failure, also show the raw provider response.
-    """
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
-        raise InputError(
-            "ssift chat requires an interactive terminal; use ssift ask for pipes."
-        )
-    from sourcesift.tui import ChatApp
-
-    overrides = {}
-    if model is not None:
-        overrides["model"] = model
-    if reasoning_effort is not None:
-        overrides["reasoning_effort"] = reasoning_effort
-    settings = load_settings(config, overrides={"agent": overrides})
-    session = SourceSift(settings).session(
-        files=file or (), save=True if save else None, resume=continue_
-    )
-    ChatApp(session, debug=debug).run()

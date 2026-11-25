@@ -95,7 +95,7 @@ Provider authentication failures and rate limits fail without automatic retries.
 A model failure reports the HTTP status and OpenRouter's own short error message,
 for example `(HTTP 404: No endpoints found for …)`. The raw provider response is
 left out because it can echo request content; add `--debug` to print it to stderr
-with the API key redacted. `ssift chat --debug` shows it in the failed turn.
+with the API key redacted.
 Do not put API keys in prompts, files, CLI flags, or committed configuration.
 
 Research uses the [registered source catalog](research.md); there are no topic or
@@ -110,14 +110,5 @@ The default total timeout is 60 seconds. For longer research requests, increase
 
 ## Web app
 
-`ssift web` serves the chat as a local page that can draw visuals; it needs the
-`web` extra. See the [web app guide](web.md).
-
-## Interactive terminal chat
-
-Run `ssift chat`, optionally with `--config`, `--model`, `--reasoning-effort`, and
-repeatable `--file/-f`. It requires terminal stdin and stdout; use `ask` for pipes.
-A bare `ssift` opens chat when stdin and stdout are terminals; otherwise it shows
-help. `ssift --help` always shows help. Missing model/key settings open an in-app
-setup panel. See [interactive chat](chat.md) for fuzzy slash commands, `@` file
-attachments, personal context, cancellation, and session limits.
+`ssift web` serves the chat as a local page. See the [web app guide](web.md).
+A bare `ssift` shows help.

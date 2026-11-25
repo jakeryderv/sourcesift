@@ -172,7 +172,7 @@ that evidence with stable citations and disclosed retrieval dates. They can canc
 an active turn without losing completed history, inspect context, and start fresh.
 The SDK exposes the same session behavior. One-off CLI output remains pipe-friendly.
 
-See [interactive chat](chat.md) for commands, limits, and session semantics.
+The Textual chat was later removed in favor of the [web app](web.md).
 
 ### Interactive workflow refinements
 

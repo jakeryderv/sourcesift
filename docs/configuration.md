@@ -85,14 +85,15 @@ Windows. The directory is created when the first report is saved.
 
 ```toml
 [sessions]
-save = false           # true saves every chat without --save
+save = false           # true saves every conversation without --save
 directory = "sessions" # relative to this TOML file; `~` expands
 ```
 
-Chat conversations are kept in memory unless `save` is true or chat is started
+Conversations are kept in memory unless `save` is true or `ssift web` is started
 with `--save` or `--continue`. Saved conversations go to `sessions/` in the same
-per-user data directory as reports unless `directory` is set. See the
-[chat guide](chat.md#save-and-continue-a-conversation) for what a file contains.
+per-user data directory as reports unless `directory` is set. A file holds the
+prompts, answers, retrieved evidence text, and attached document text, so it is
+readable by your user only. Credentials and settings are never saved.
 
 ## Sources and freshness
 
@@ -151,10 +152,10 @@ and provider cost. The SDK validates upper bounds on every numeric budget.
 
 ## Session limits and context reload
 
-`ssift chat` and `app.session()` snapshot configured context and initial files at
-creation. They keep that text stable until reset. `/new` clears completed
+`ssift web` and `app.session()` snapshot configured context and initial files at
+creation. They keep that text stable until reset. A reset clears completed
 history and reloads those files; an unreadable file preserves the previous session.
-Change model/source configuration by restarting chat or creating a new application.
+Change model/source configuration by restarting the server or creating a new application.
 One-off `ask` continues to load files for each request.
 
 | Setting under `[limits]` | Default | Meaning |
@@ -166,7 +167,7 @@ One-off `ask` continues to load files for each request.
 All research budgets above apply per turn, including newly collected evidence.
 Within one conversation a feed fetched in the last `feed_cache_seconds` is reused
 without a new request, and its evidence keeps the original retrieval time. Articles
-are always retrieved again. The cache is held in memory and cleared by `/new`;
+are always retrieved again. The cache is held in memory and cleared by a reset;
 `ssift ask` does not use it.
 
 History and retained evidence are separately bounded by `max_session_bytes`.

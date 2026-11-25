@@ -5,7 +5,6 @@ import sys
 from datetime import UTC, datetime
 
 import pytest
-from textual.widgets import Static, TextArea
 
 from sourcesift import (
     InputError,
@@ -17,9 +16,6 @@ from sourcesift import (
     render_report,
     save_report,
 )
-from sourcesift.core.session import Session
-from sourcesift.sources import SourceRegistry
-from sourcesift.tui import ChatApp
 
 WHEN = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 
@@ -224,25 +220,3 @@ def test_cli_report_flag_saves_and_keeps_stdout_clean(monkeypatch, capsys, tmp_p
     assert "> Library news" in saved.read_text(encoding="utf-8")
     assert f"report saved to {saved}" in out.err
     assert "report saved" not in out.out and out.out.startswith("The library")
-
-
-@pytest.mark.asyncio
-async def test_chat_report_command(tmp_path):
-    settings = Settings(
-        agent={"model": "example/test", "api_key": "private-key"},
-        reports={"directory": tmp_path},
-    )
-    session = Session(settings, SourceRegistry(()))
-    app = ChatApp(session)
-    async with app.run_test(size=(100, 24)) as pilot:
-        editor = app.query_one("#prompt", TextArea)
-        editor.load_text("/report")
-        await pilot.press("escape", "enter")
-        assert "Nothing to save yet" in str(app.query_one("#status", Static).content)
-        assert not list(tmp_path.iterdir())
-        session._turns.append(("Library news", result()))
-        editor.load_text("/report")
-        await pilot.press("escape", "enter")
-        (saved,) = tmp_path.iterdir()
-        assert "Report saved to" in str(app.query_one("#status", Static).content)
-        assert "## References" in saved.read_text(encoding="utf-8")
