@@ -142,7 +142,13 @@ class Fetcher:
                         raise RetrievalError("Redirect has no destination.")
                     current = normalize_url(urljoin(current, location))
                     continue
-                if not robots and response.status_code in {404, 410}:
+                # A robots.txt the site will not serve sets no rules (RFC 9309);
+                # one it cannot serve (429 or a server error) still stops retrieval.
+                if (
+                    not robots
+                    and 400 <= response.status_code < 500
+                    and response.status_code != 429
+                ):
                     return Page(requested, current, b"", "text/plain")
                 if response.status_code != 200:
                     raise RetrievalError(

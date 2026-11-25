@@ -145,8 +145,8 @@ All are `[limits]` settings. Existing input limits above remain unchanged.
 | `max_model_requests` | 6 | All calls, including tool continuations and citation repair |
 | `max_tool_calls` | 8 | Total agent tool calls |
 | `max_sources` | 3 | Distinct registered sources attempted |
-| `max_items` | 18 | Distinct evidence items retained |
-| `max_items_per_source` | 6 | Accepted entries per source, most recent dated first |
+| `max_items` | 30 | Distinct evidence items retained |
+| `max_items_per_source` | 10 | Accepted entries per source, most recent dated first |
 | `max_articles` | 6 | Article attempts, including failures |
 | `max_figures` | 4 | New [figures](research.md#figures) in one turn |
 | `max_artifact_chars` | 40000 | Length of one [artifact](research.md#artifacts) |

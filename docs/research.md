@@ -214,7 +214,9 @@ including redirects, resolves to public IP addresses and is pinned for the conne
 while retaining the original Host and TLS server name. Private, loopback, link-local,
 reserved, and multicast destinations are rejected. Retrieval uses no environment
 proxies, authentication, or retained cookies. Publisher robots rules are checked;
-missing robots files (404/410) permit access, while unavailable rules fail closed.
+a robots file the site does not serve (a 4xx reply such as 404 or 403) sets no
+rules, as RFC 9309 describes, while one it cannot serve (429 or a server error)
+stops retrieval from that site.
 Requests are sequential and bounded; there is no general crawl or paywall bypass.
 
 RSS and Atom summaries are parsed with feedparser. If a source has no explicit
