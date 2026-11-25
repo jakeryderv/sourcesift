@@ -2,6 +2,38 @@
 
 Release Please maintains this file through reviewed release PRs.
 
+## [0.7.0](https://github.com/jakeryderv/sourcesift/compare/v0.6.0...v0.7.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* lay the web app out as chats, chat, and an artifact pane with export ([#48](https://github.com/jakeryderv/sourcesift/issues/48))
+* save each conversation in its own folder, with a list to reopen from ([#47](https://github.com/jakeryderv/sourcesift/issues/47))
+* replace widgets and reports with figures and artifacts ([#46](https://github.com/jakeryderv/sourcesift/issues/46))
+* remove the terminal chat and make the web app the interactive interface ([#45](https://github.com/jakeryderv/sourcesift/issues/45))
+* draw visuals with Plotly from tables and drop automatic refresh ([#43](https://github.com/jakeryderv/sourcesift/issues/43))
+* add typed data sources, widgets, and visuals in results ([#39](https://github.com/jakeryderv/sourcesift/issues/39))
+
+### Features
+
+* add a weather source and a map widget with live radar ([#41](https://github.com/jakeryderv/sourcesift/issues/41)) ([19d5e01](https://github.com/jakeryderv/sourcesift/commit/19d5e018e29f09b4046557e07f4d90f7acfd0889))
+* add typed data sources, widgets, and visuals in results ([#39](https://github.com/jakeryderv/sourcesift/issues/39)) ([d260aa1](https://github.com/jakeryderv/sourcesift/commit/d260aa18b43ba04db3d0f11cda2ba61debf4c34e))
+* **chat:** add /sources to browse the catalog and limit a conversation's sources ([#36](https://github.com/jakeryderv/sourcesift/issues/36)) ([de38fb8](https://github.com/jakeryderv/sourcesift/commit/de38fb8986fe04ad971c65cf3d546081b8efe05e))
+* draw visuals with Plotly from tables and drop automatic refresh ([#43](https://github.com/jakeryderv/sourcesift/issues/43)) ([b416cdb](https://github.com/jakeryderv/sourcesift/commit/b416cdbc621939581c20f564ea8fb09eee3baf32))
+* include visuals in reports, with chart images from the web app ([#44](https://github.com/jakeryderv/sourcesift/issues/44)) ([a030878](https://github.com/jakeryderv/sourcesift/commit/a030878a7fb9a5ae0ab50786bcf1b8845bb5e387))
+* lay the web app out as chats, chat, and an artifact pane with export ([#48](https://github.com/jakeryderv/sourcesift/issues/48)) ([f47e574](https://github.com/jakeryderv/sourcesift/commit/f47e574f5ca628928aebd0022e0670ddbb1f33b4))
+* remove the terminal chat and make the web app the interactive interface ([#45](https://github.com/jakeryderv/sourcesift/issues/45)) ([804ac1e](https://github.com/jakeryderv/sourcesift/commit/804ac1e62f33d75d602563626fcac343f705a2f5))
+* replace widgets and reports with figures and artifacts ([#46](https://github.com/jakeryderv/sourcesift/issues/46)) ([88a355d](https://github.com/jakeryderv/sourcesift/commit/88a355dbd0b72fdfdba78115922c60f8a9af5c37))
+* save each conversation in its own folder, with a list to reopen from ([#47](https://github.com/jakeryderv/sourcesift/issues/47)) ([b2bdfda](https://github.com/jakeryderv/sourcesift/commit/b2bdfda3e97a3177ee5379397ec942b0e4c8d9bd))
+* **web:** add ssift web, a local page that draws charts, tables, and figures ([#40](https://github.com/jakeryderv/sourcesift/issues/40)) ([39a3c8e](https://github.com/jakeryderv/sourcesift/commit/39a3c8e0108cfcb90e6faa702e85c26cce985f4b))
+* **web:** show agent activity, group visuals in one card, and restyle the chat ([#42](https://github.com/jakeryderv/sourcesift/issues/42)) ([45b3bfc](https://github.com/jakeryderv/sourcesift/commit/45b3bfc756a19809eca736eb5e21c1ee9376d60c))
+
+
+### Documentation
+
+* describe artifacts, figures, saved conversations, and the web layout ([#49](https://github.com/jakeryderv/sourcesift/issues/49)) ([3ae95ee](https://github.com/jakeryderv/sourcesift/commit/3ae95ee148d70018758a48c648a6d9fac6adbd9c))
+* propose a local web app with typed data sources and display blocks ([#38](https://github.com/jakeryderv/sourcesift/issues/38)) ([e6438c5](https://github.com/jakeryderv/sourcesift/commit/e6438c5b019e74110eabf726af6ad0aa2dc46cb6))
+
 ## [0.6.0](https://github.com/jakeryderv/sourcesift/compare/v0.5.0...v0.6.0) (2026-11-21)
 
 
