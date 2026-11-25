@@ -18,7 +18,7 @@ from sourcesift.artifacts import (
 )
 from sourcesift.builtin import builtin_toolkit
 from sourcesift.core.config import Settings
-from sourcesift.data import Figure, FigureKind, Table
+from sourcesift.data import Figure, FigureKind, Table, shape
 from sourcesift.extend import FetchContext, Toolkit
 from sourcesift.figures import check_figure
 from sourcesift.models import Artifact, Evidence, Reference, ResearchWindow
@@ -34,6 +34,7 @@ from sourcesift.sources import Source, SourceRegistry
 
 WindowName = Literal["recent", "today", "this_week", "any"]
 MAX_CONVERSATION_FIGURES = 48
+MAX_READ_ROWS = 60
 
 
 def make_window(label: WindowName, settings: Settings, now: datetime) -> ResearchWindow:
@@ -186,16 +187,19 @@ class Research:
         }
         if earlier:
             reply["unchanged_evidence_ids"] = earlier
-        tables = [
+        if tables := self.chartable():
+            reply["chartable"] = tables
+        return reply
+
+    def chartable(self) -> list[dict[str, object]]:
+        """The tables that make_figure and read_table can use, by evidence ID."""
+        return [
             {
                 "evidence_id": data.evidence_ids[0],
                 "tables": [table.describe() for table in data.tables],
             }
             for data in {id(d): d for d in self.datasets.values()}.values()
         ]
-        if tables:
-            reply["chartable"] = tables
-        return reply
 
     async def research(
         self,
@@ -346,6 +350,10 @@ class Research:
         series: str = "",
         title: str = "",
         log_scale: bool = False,
+        period: str = "",
+        combine: str = "last",
+        since: str = "",
+        top: int = 0,
     ) -> dict[str, object]:
         """Draw a chart from a table returned by query_source.
 
@@ -358,7 +366,11 @@ class Research:
         names a text column that splits a single y column into one series per
         value. When the evidence has several tables, pass the table's name. The
         application draws the chart from the retrieved rows: values cannot be
-        passed in. The reply gives the figure's ID and the Markdown that places it.
+        passed in. To chart fewer or summarized rows, pass period (day, week,
+        month, quarter, year) with combine (last, first, mean, sum, min, max) for
+        one point per period, since (an ISO date) to start later, or top to keep
+        the N largest rows. The reply gives the figure's ID and the Markdown that
+        places it.
         """
         key = evidence_id.strip().strip("[]")
         dataset = self.datasets.get(key)
@@ -380,6 +392,17 @@ class Research:
         problem = "That chart could not be drawn from this data."
         for candidate in candidates:
             try:
+                if period or since or top:
+                    candidate = shape(
+                        candidate,
+                        columns=tuple(
+                            dict.fromkeys([x, *y, *([series] if series else [])])
+                        ),
+                        period=period,
+                        combine=combine,
+                        since=since,
+                        top=top,
+                    )
                 figure = Figure(
                     id=f"F{number}",
                     title=" ".join(title.split())[:120] or candidate.name,
@@ -412,6 +435,66 @@ class Research:
         self.figures[figure.id] = figure
         self.made.append(figure.id)
         return self._placed(figure)
+
+    async def read_table(
+        self,
+        evidence_id: str,
+        table: str = "",
+        columns: list[str] = [],  # noqa: B006 - a tool schema default, never mutated
+        period: str = "",
+        combine: str = "last",
+        since: str = "",
+        top: int = 0,
+    ) -> dict[str, object]:
+        """Read rows of a table returned by query_source, to quote or tabulate them.
+
+        Pass an evidence_id listed under "chartable". columns names the columns
+        wanted (all when empty). A reply holds at most 60 rows, so narrow a long
+        table first: period (day, week, month, quarter, year) with combine
+        (last, first, mean, sum, min, max) gives one row per period, since (an
+        ISO date) starts later, and top keeps the N largest rows. Cite the
+        values with the reply's "cite". Use make_figure, not this, for a chart.
+        """
+        key = evidence_id.strip().strip("[]")
+        dataset = self.datasets.get(key)
+        if dataset is None:
+            return {
+                "error": "No table is attached to that evidence. Only evidence listed "
+                "under chartable, from query_source in this conversation, can be read."
+            }
+        wanted = " ".join(table.split()).casefold()
+        candidates = [
+            t for t in dataset.tables if not wanted or t.name.casefold() == wanted
+        ]
+        if not candidates:
+            names = "; ".join(t.name for t in dataset.tables)
+            return {"error": f"No table has that name. Tables: {names}."}
+        problem = "That table could not be read."
+        for candidate in candidates:
+            try:
+                shaped = shape(
+                    candidate,
+                    columns=tuple(columns),
+                    period=period,
+                    combine=combine,
+                    since=since,
+                    top=top,
+                )
+            except ValueError as exc:
+                problem = " ".join(str(exc).split())[:300] or problem
+                continue
+            reply: dict[str, object] = shaped.describe() | {
+                "rows": [list(row) for row in shaped.rows[:MAX_READ_ROWS]],
+                "total_rows": len(shaped.rows),
+                "cite": f"[{dataset.evidence_ids[0]}]",
+            }
+            if len(shaped.rows) > MAX_READ_ROWS:
+                reply["note"] = (
+                    f"Only the first {MAX_READ_ROWS} of {len(shaped.rows)} rows are "
+                    "shown; narrow with period, since, top, or columns."
+                )
+            return reply
+        return {"error": problem}
 
     @staticmethod
     def _placed(figure: Figure) -> dict[str, object]:

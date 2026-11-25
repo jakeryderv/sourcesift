@@ -100,6 +100,8 @@ tool to draw a chart from one of them, naming the columns to use:
 | `y` | One to eight numeric columns |
 | `series` | A column whose values split one `y` column into separate series |
 | `log_scale`, `title` | A logarithmic value axis; the chart's title |
+| `period`, `combine` | One point per `day`, `week`, `month`, `quarter`, or `year`, taking the `last` or `first` recorded value or the `mean`, `sum`, `min`, or `max` |
+| `since`, `top` | Start at an ISO date; keep only the N largest rows |
 
 The tool returns an ID such as `F1`. The model places the figure in its answer
 or in an artifact with an ordinary Markdown image whose target is that ID:
@@ -122,8 +124,16 @@ or in an artifact with an ordinary Markdown image whose target is that ID:
 - In a conversation, a follow-up can draw data retrieved in an earlier turn
   without another request while the conversation is open. A saved conversation
   keeps its figures, with the rows each was drawn from, but not the other tables.
-- Tables, headline numbers, and lists are written by the model as Markdown from
-  the evidence. There are no maps.
+- Tables, headline numbers, and lists are written by the model as Markdown.
+  The `read_table` tool gives it rows of a retrieved table to quote, at most 60
+  at a time, with the same `period`, `combine`, `since`, and `top` options to
+  summarize a long table first. The model sees only the rows it reads this way
+  and the evidence text. There are no maps.
+- Summarizing never invents a value: a `last` or `first` point is one recorded
+  row with its own date, and the other choices are computed by the application
+  from the retrieved rows.
+- Each request in a conversation lists the tables still held, so a follow-up
+  charts or reads them instead of querying the source again.
 
 Figures are returned as `Result.figures` and in `--json` output: the recipe and
 the rows, not the picture. `sourcesift.render_png(figure)` draws one.

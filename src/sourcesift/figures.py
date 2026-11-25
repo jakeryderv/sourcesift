@@ -8,10 +8,9 @@ display, browser, or network.
 import io
 import math
 from dataclasses import dataclass
-from datetime import datetime
 from functools import lru_cache
 
-from sourcesift.data import Cell, Figure, FigureKind, Table
+from sourcesift.data import Cell, Figure, FigureKind, Table, _moment
 
 MAX_BARS = 60
 MAX_PARTS = 12
@@ -43,16 +42,6 @@ def _numbers(table: Table, name: str) -> list[float | None]:
         float(cell) if isinstance(cell, int | float) else None
         for cell in table.values(name)
     ]
-
-
-def _moment(cell: Cell, name: str) -> datetime:
-    try:
-        # Times are written in the zone they should be read in; drop the offset.
-        return datetime.fromisoformat(str(cell)).replace(tzinfo=None)
-    except ValueError:
-        raise ValueError(
-            f"Column {name!r} has a value that is not a date or time."
-        ) from None
 
 
 @dataclass(frozen=True)
