@@ -378,7 +378,8 @@ async def test_dns_and_pinning(monkeypatch):
         assert re.fullmatch(r"SourceSift/[\w.+-]+", request.headers["user-agent"])
         assert request.extensions["sni_hostname"] == "example.com"
         if request.url.path == "/robots.txt":
-            return httpx.Response(404)
+            # A site that refuses to serve robots.txt has set no rules.
+            return httpx.Response(403)
         if request.url.path == "/start":
             return httpx.Response(
                 302, headers={"location": "/end", "set-cookie": "secret=1"}
@@ -430,6 +431,7 @@ async def test_dns_failure(monkeypatch):
         ("private", "public HTTP"),
         ("robots", "robots policy"),
         ("robots503", "HTTP 503"),
+        ("robots429", "HTTP 429"),
         ("status", "HTTP 403"),
         ("large", "byte limit"),
         ("timeout", "timed out"),
@@ -446,7 +448,10 @@ async def test_http_failures(monkeypatch, mode, match):
                 return httpx.Response(200, text="User-agent: *\nDisallow: /")
             if mode == "robots503":
                 return httpx.Response(503)
-            return httpx.Response(410)
+            if mode == "robots429":
+                return httpx.Response(429)
+            # A robots.txt that is refused or missing sets no rules.
+            return httpx.Response(403 if mode == "status" else 410)
         if mode == "redirect":
             return httpx.Response(302, headers={"location": "/loop"})
         if mode == "missing":
@@ -822,7 +827,7 @@ async def test_hacker_news_front_page_and_windowed_search():
     run = Research(Settings(), SourceRegistry([HN]), fetcher, "what is on HN", now=NOW)
     reply = await run.query_source("hacker-news", {"query": "  "}, "today")
     assert fetcher.get.await_args.args[0] == (
-        "https://hn.algolia.com/api/v1/search?hitsPerPage=6&tags=front_page"
+        "https://hn.algolia.com/api/v1/search?hitsPerPage=10&tags=front_page"
     )
     (item,) = run.evidence.values()
     assert item.url == "https://news.ycombinator.com/item?id=101"
