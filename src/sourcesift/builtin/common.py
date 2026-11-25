@@ -29,3 +29,11 @@ def number(value: object) -> float | None:
     except ValueError:
         return None
     return result if math.isfinite(result) else None
+
+
+def with_unit(value: float, unit: str) -> str:
+    """A value and its unit as people write them: 38°F, 45%, 12 mph."""
+    text = f"{value:,.10g}"
+    if unit in {"USD", "$"}:
+        return f"${text}"
+    return text + (unit if unit == "%" or unit.startswith("°") else f" {unit}".rstrip())

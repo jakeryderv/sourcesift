@@ -1,26 +1,19 @@
 """SourceSift: a Python SDK for requests with explicit document context."""
 
+from sourcesift.artifacts import artifact_from_answer, render_qmd, save_artifacts
 from sourcesift.core.application import SourceSift
 from sourcesift.core.config import (
     AgentSettings,
+    ArtifactsSettings,
     ContextSettings,
     Limits,
-    ReportsSettings,
     SessionsSettings,
     Settings,
     SourcesSettings,
     load_settings,
 )
 from sourcesift.core.session import Session
-from sourcesift.data import (
-    Block,
-    Column,
-    Figure,
-    Stat,
-    StatView,
-    Table,
-    TableView,
-)
+from sourcesift.data import Column, Figure, Table
 from sourcesift.errors import (
     ConfigurationError,
     InputError,
@@ -32,11 +25,11 @@ from sourcesift.extend import (
     FetchContext,
     Record,
     SourceResult,
-    Widget,
     source,
-    widget,
 )
+from sourcesift.figures import render_png
 from sourcesift.models import (
+    Artifact,
     ContextDocument,
     Reference,
     Request,
@@ -45,12 +38,12 @@ from sourcesift.models import (
     SessionEvent,
     Usage,
 )
-from sourcesift.reports import render_report, save_report
 from sourcesift.sources import Source, SourceRegistry
 
 __all__ = [
     "AgentSettings",
-    "Block",
+    "Artifact",
+    "ArtifactsSettings",
     "Column",
     "ConfigurationError",
     "ContextDocument",
@@ -63,7 +56,6 @@ __all__ = [
     "ModelError",
     "Record",
     "Reference",
-    "ReportsSettings",
     "Request",
     "ResearchWindow",
     "Result",
@@ -77,18 +69,15 @@ __all__ = [
     "SourceSift",
     "SourceSiftError",
     "SourcesSettings",
-    "Stat",
-    "StatView",
     "Table",
-    "TableView",
     "Usage",
-    "Widget",
+    "artifact_from_answer",
     "hello",
     "load_settings",
-    "render_report",
-    "save_report",
+    "render_png",
+    "render_qmd",
+    "save_artifacts",
     "source",
-    "widget",
 ]
 
 

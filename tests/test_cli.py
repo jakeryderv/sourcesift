@@ -26,7 +26,7 @@ def invoke(monkeypatch):
 def fake_run(monkeypatch):
     calls = []
 
-    def run(self, request, *, files, stdin):
+    def run(self, request, *, files, stdin, artifacts=False):
         calls.append(
             (self.settings, request, files, stdin.read() if stdin is not None else None)
         )
@@ -280,7 +280,7 @@ def test_bare_nonterminal_shows_help(invoke, capsys):
 
 @pytest.mark.parametrize("debug", [False, True])
 def test_debug_prints_provider_detail_to_stderr(invoke, monkeypatch, capsys, debug):
-    def fail(self, request, *, files, stdin):
+    def fail(self, request, *, files, stdin, artifacts=False):
         raise ModelError("Summary.", status_code=503, detail='{"raw": "body"}')
 
     monkeypatch.setattr(cli.SourceSift, "run_sync", fail)

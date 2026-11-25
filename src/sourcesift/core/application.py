@@ -13,7 +13,7 @@ from sourcesift.core.config import Settings, load_settings
 from sourcesift.core.context import prepare_request
 from sourcesift.core.session import Session
 from sourcesift.errors import ConfigurationError, InputError
-from sourcesift.extend import DataSource, Toolkit, Widget
+from sourcesift.extend import DataSource, Toolkit
 from sourcesift.models import Request, Result
 from sourcesift.sources import Source, SourceRegistry
 
@@ -70,20 +70,15 @@ class SourceSift:
             raise ConfigurationError("Register a live data source with register().")
         self.registry = SourceRegistry((*self.registry.list(), source))
 
-    def register(self, item: DataSource | Widget) -> None:
-        """Add a data source or widget defined with ``sourcesift.extend``.
+    def register(self, item: DataSource) -> None:
+        """Add a data source defined with ``sourcesift.extend.source``.
 
         Call before starting requests. This interface is new and may change.
         Extensions are trusted Python running in this process.
         """
-        sources = list(self.toolkit.sources.values())
-        widgets = list(self.toolkit.widgets.values())
-        if isinstance(item, DataSource):
-            registry = SourceRegistry((*self.registry.list(), item.source))
-            self.toolkit = Toolkit([*sources, item], widgets)
-            self.registry = registry
-        else:
-            self.toolkit = Toolkit(sources, [*widgets, item])
+        registry = SourceRegistry((*self.registry.list(), item.source))
+        self.toolkit = Toolkit([*self.toolkit.sources.values(), item])
+        self.registry = registry
 
     def session(
         self,
@@ -112,11 +107,14 @@ class SourceSift:
         *,
         files: Sequence[str | Path] = (),
         stdin: BinaryIO | None = None,
+        artifacts: bool = False,
     ) -> Result:
         """Run one request with optional files and an explicitly supplied input stream.
 
         No previous run's context or conversation is retained. The SDK never reads
         process stdin implicitly. Use Request for labeled context or plain output.
+        ``artifacts`` lets the model write documents, returned in
+        ``Result.artifacts``; nothing is written to disk.
         """
         try:
             parsed = Request(prompt=request) if isinstance(request, str) else request
@@ -125,7 +123,11 @@ class SourceSift:
         validate_model_access(self.settings)
         prepared = prepare_request(parsed, self.settings, files=files, stdin=stdin)
         return await run_agent(
-            prepared, self.settings, self.registry, toolkit=self.toolkit
+            prepared,
+            self.settings,
+            self.registry,
+            toolkit=self.toolkit,
+            artifacts=artifacts,
         )
 
     def run_sync(
@@ -134,6 +136,7 @@ class SourceSift:
         *,
         files: Sequence[str | Path] = (),
         stdin: BinaryIO | None = None,
+        artifacts: bool = False,
     ) -> Result:
         """Run from an ordinary script; use await run() inside an active event loop."""
         try:
@@ -144,4 +147,6 @@ class SourceSift:
             raise InputError(
                 "run_sync() cannot run inside an event loop; use await app.run(...)."
             )
-        return asyncio.run(self.run(request, files=files, stdin=stdin))
+        return asyncio.run(
+            self.run(request, files=files, stdin=stdin, artifacts=artifacts)
+        )

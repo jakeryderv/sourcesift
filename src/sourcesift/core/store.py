@@ -17,8 +17,9 @@ from typing import Any, Literal
 from platformdirs import user_data_path
 from pydantic import ValidationError
 
+from sourcesift.data import Figure
 from sourcesift.errors import InputError
-from sourcesift.models import ContextDocument, Contract, Evidence, Result
+from sourcesift.models import Artifact, ContextDocument, Contract, Evidence, Result
 
 
 class SavedTurn(Contract):
@@ -36,6 +37,8 @@ class SavedConversation(Contract):
     # Model framework messages, validated by the session when it resumes.
     messages: list[Any]
     evidence: tuple[Evidence, ...]
+    figures: tuple[Figure, ...] = ()
+    artifacts: tuple[Artifact, ...] = ()
     next_id: int
     limitations: tuple[str, ...]
     turns: tuple[SavedTurn, ...]

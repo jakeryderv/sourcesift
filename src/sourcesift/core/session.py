@@ -13,12 +13,20 @@ from sourcesift.agents.runtime import (
     run_agent,
     validate_model_access,
 )
+from sourcesift.artifacts import (
+    MAX_ARTIFACTS,
+    artifact_from_answer,
+    new_artifact_folder,
+    save_artifacts,
+)
 from sourcesift.core.config import ContextSettings, Settings
 from sourcesift.core.context import prepare_request
 from sourcesift.core.store import SavedConversation, SavedTurn, SessionStore
+from sourcesift.data import Figure
 from sourcesift.errors import InputError
 from sourcesift.extend import Toolkit
 from sourcesift.models import (
+    Artifact,
     ContextDocument,
     Reference,
     Request,
@@ -102,6 +110,57 @@ class Session:
         )
 
     @property
+    def figures(self) -> tuple[Figure, ...]:
+        """Every figure made in this conversation, in ID order."""
+        return tuple(self._state.figures.values())
+
+    @property
+    def artifacts(self) -> tuple[Artifact, ...]:
+        """The current version of every artifact in this conversation."""
+        return tuple(self._state.artifacts.values())
+
+    def keep_answer(self, turn: int = -1) -> Artifact:
+        """Turn a completed answer into an artifact and return it.
+
+        ``turn`` indexes ``turns``; the default is the latest. The artifact keeps
+        the answer's citations and figures and can be revised in later turns.
+        """
+        if self.busy:
+            raise InputError("Finish or cancel the active turn first.")
+        try:
+            prompt, result = self._turns[turn]
+        except IndexError:
+            raise InputError("There is no such answer to keep.") from None
+        if len(self._state.artifacts) >= MAX_ARTIFACTS:
+            raise InputError("This conversation has reached its limit on artifacts.")
+        number = 1 + max((int(key[1:]) for key in self._state.artifacts), default=0)
+        artifact = artifact_from_answer(prompt, result, artifact_id=f"A{number}")
+        self._state.artifacts[artifact.id] = artifact
+        try:
+            self._save()
+            self.save_error = None
+        except InputError as exc:
+            self.save_error = str(exc)
+        return artifact
+
+    def save_artifacts(self, directory: str | Path | None = None) -> list[Path]:
+        """Write every artifact, with its references and figures, into a folder.
+
+        ``directory`` defaults to a new folder in the artifacts directory. See
+        ``sourcesift.save_artifacts`` for the files written.
+        """
+        if not self._state.artifacts:
+            raise InputError("There is no artifact to save yet.")
+        folder = (
+            Path(directory)
+            if directory is not None
+            else new_artifact_folder(
+                self.settings.artifacts.directory, self.artifacts[0].title
+            )
+        )
+        return save_artifacts(folder, self.artifacts, self.evidence, self.figures)
+
+    @property
     def saved_path(self) -> Path | None:
         """The file this conversation is saved to, once a turn has been saved."""
         return self._path if self._path and self._turns else None
@@ -124,6 +183,8 @@ class Session:
             {item.url: item for item in saved.evidence},
             saved.next_id,
             saved.limitations,
+            figures={item.id: item for item in saved.figures},
+            artifacts={item.id: item for item in saved.artifacts},
         )
         if state.size_bytes() > self.settings.limits.max_session_bytes:
             raise InputError(
@@ -146,6 +207,8 @@ class Session:
                     self._state.messages, mode="json"
                 ),
                 evidence=tuple(self._state.evidence.values()),
+                figures=tuple(self._state.figures.values()),
+                artifacts=tuple(self._state.artifacts.values()),
                 next_id=self._state.next_id,
                 limitations=self._state.limitations,
                 turns=tuple(

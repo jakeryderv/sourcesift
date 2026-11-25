@@ -7,8 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field
 
-from sourcesift.builtin.common import json_object, number, one_line
-from sourcesift.builtin.widgets import with_unit
+from sourcesift.builtin.common import json_object, number, one_line, with_unit
 from sourcesift.contract import Contract
 from sourcesift.data import Cell, Column, Table
 from sourcesift.extend import FetchContext, Record, SourceResult, source

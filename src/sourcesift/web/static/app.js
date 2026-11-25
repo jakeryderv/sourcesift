@@ -1,10 +1,9 @@
-import { el, formatTime, formatValue } from "/dom.js";
-import { figureImage, renderFigure } from "/figure.js";
+import { el } from "/dom.js";
 
 const $ = (id) => document.getElementById(id);
 const transcript = $("transcript");
 const scroller = $("scroller");
-const state = { token: "", session: null, busy: false, abort: null, references: new Map(), sources: [], turns: 0, radar: null };
+const state = { token: "", session: null, busy: false, abort: null, references: new Map(), sources: [], turns: 0 };
 
 let toastTimer = 0;
 function toast(text) {
@@ -56,7 +55,7 @@ function linkCitations(root) {
 }
 
 function setAnswer(node, html) {
-  // Rendered by the server with raw HTML escaped and images disabled.
+  // Rendered by the server: raw HTML escaped, and only figures as images.
   node.innerHTML = html;
   linkCitations(node);
 }
@@ -132,106 +131,11 @@ function createActivity(timed = false) {
   };
 }
 
-// ---- Visuals -----------------------------------------------------------------
-
-// The address of the current radar imagery, looked up once per page load.
-function radarTiles() {
-  state.radar ??= api("/api/radar").then((response) => response.json()).then((data) => data.tiles, () => null);
-  return state.radar;
-}
-
-function renderTable(body, view) {
-  const table = el("table", { class: "data" });
-  const head = el("tr");
-  const numeric = view.columns.map((_, i) => view.rows.some((row) => typeof row[i] === "number"));
-  view.columns.forEach((column, i) => head.append(el("th", numeric[i] ? { class: "num" } : {}, column.unit ? `${column.name} (${column.unit})` : column.name)));
-  table.append(head);
-  for (const row of view.rows) {
-    const tr = el("tr");
-    row.forEach((cell, i) => {
-      const text = typeof cell === "number" ? formatValue(cell, "", false) : view.columns[i].kind === "time" ? formatTime(cell) : cell ?? "—";
-      tr.append(el("td", numeric[i] ? { class: "num" } : {}, text));
-    });
-    table.append(tr);
-  }
-  const scroll = el("div", { class: "scroll" });
-  scroll.append(table);
-  body.replaceChildren(scroll);
-}
-
-function renderStats(body, view) {
-  const grid = el("div", { class: "stats" });
-  for (const item of view.items) {
-    const tile = el("div");
-    tile.append(el("div", { class: "stat-label" }, item.label), el("div", { class: "stat-value" }, formatValue(item.value, item.unit)));
-    if (typeof item.change === "number") {
-      const arrow = item.change > 0 ? "▲" : item.change < 0 ? "▼" : "•";
-      tile.append(el("div", { class: "stat-change" }, `${arrow} ${formatValue(Math.abs(item.change), item.unit)} since the previous value`));
-    }
-    grid.append(tile);
-  }
-  body.replaceChildren(grid);
-}
-
-async function drawFigure(body, block) {
-  const view = block.view;
-  const radar = view.overlay === "radar" ? await radarTiles() : null;
-  const plot = el("div");
-  body.replaceChildren(plot);
-  await renderFigure(plot, view, radar);
-  if (view.overlay === "radar" && !radar) body.append(el("p", { class: "muted small" }, "Radar imagery is unavailable right now."));
-  // The same values as a table, for reading exactly and for screen readers.
-  const shown = { columns: block.table.columns, rows: block.table.rows.slice(0, 200) };
-  const details = el("details", { class: "data-view" });
-  const count = block.table.rows.length;
-  details.append(el("summary", {}, count > 200 ? `View data (first 200 of ${count} rows)` : "View data"));
-  const holder = el("div");
-  renderTable(holder, shown);
-  details.append(holder);
-  body.append(details);
-}
-
-function drawView(body, block) {
-  if (block.view.type === "figure") drawFigure(body, block);
-  else if (block.view.type === "table") renderTable(body, block.view);
-  else renderStats(body, block.view);
-}
-
-// One card for all of an answer's visuals: figures first, then maps, charts, tables.
-function rank(view) {
-  if (view.type === "stat") return 0;
-  if (view.type === "table") return 3;
-  return view.data.some((trace) => trace.type === "scattermap") ? 1 : 2;
-}
-
-function renderArtifact(blocks) {
-  const card = el("section", { class: "artifact" });
-  const head = el("div", { class: "artifact-head" });
-  const names = [...new Set(blocks.map((b) => state.sources.find((s) => s.id === b.source_id)?.name ?? b.source_id))];
-  head.append(el("strong", {}, names.join(" · ")));
-  for (const id of [...new Set(blocks.flatMap((b) => b.evidence_ids))].slice(0, 4)) head.append(el("button", { type: "button", class: "cite", "data-cite": id }, id.slice(1)));
-  card.append(head);
-  // Where each figure was drawn, by its position in the result, for report images.
-  const figures = [];
-  const ordered = blocks.map((block, index) => ({ block, index })).sort((a, b) => rank(a.block.view) - rank(b.block.view));
-  for (const { block, index } of ordered) {
-    const section = el("div", { class: "widget" });
-    const body = el("div");
-    section.append(el("h4", {}, block.view.title), body);
-    card.append(section);
-    drawView(body, block);
-    if (block.view.type === "figure") figures.push({ index, body });
-  }
-  return { card, figures };
-}
-
 // ---- Turns -------------------------------------------------------------------
 
 function fillTurn(node, turn, index) {
   const result = turn.result;
   for (const ref of result.references) state.references.set(ref.id, ref);
-  const artifact = result.blocks.length ? renderArtifact(result.blocks) : null;
-  if (artifact) node.append(artifact.card);
   const answer = el("div", { class: "answer" });
   setAnswer(answer, turn.answer_html);
   node.append(answer);
@@ -256,19 +160,12 @@ function fillTurn(node, turn, index) {
   copy.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(result.answer); toast("Answer copied"); } catch { toast("Copying is not available here."); }
   });
-  const save = el("button", { type: "button", class: "ghost" }, "Save report");
+  const save = el("button", { type: "button", class: "ghost" }, "Keep as artifact");
   save.addEventListener("click", async () => {
     save.disabled = true;
     try {
-      // A picture of each chart and map, as it is drawn now, goes with the report.
-      const images = {};
-      for (const figure of artifact?.figures ?? []) {
-        const image = await figureImage(figure.body);
-        if (image) images[figure.index] = image;
-      }
-      const data = await (await api(`/api/sessions/${state.session}/report`, { method: "POST", body: { turn: index, images } })).json();
-      const count = data.images.length;
-      toast(`Report saved to ${data.path}${count ? ` with ${count} image${count === 1 ? "" : "s"}` : ""}`);
+      const data = await (await api(`/api/sessions/${state.session}/artifacts`, { method: "POST", body: { turn: index } })).json();
+      toast(`Artifact saved to ${data.path}`);
     } catch (error) { toast(error.message); }
     save.disabled = false;
   });
