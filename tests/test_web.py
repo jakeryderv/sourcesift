@@ -178,6 +178,7 @@ def test_turn_streams_progress_then_a_result_with_a_figure(served):
     assert kept["id"] == "A1"
     (artifact,) = kept["artifacts"]
     assert artifact["title"] == "front page" and 'data-figure="F1"' in artifact["html"]
+    assert artifact["earlier"] == []
     assert client.get(base, headers=AUTH).json()["artifacts"] == kept["artifacts"]
     large = client.post(f"{base}/turns", content=b"x" * 1_100_000, headers=AUTH)
     assert large.status_code == 403

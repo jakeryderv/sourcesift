@@ -364,6 +364,10 @@ async def test_model_writes_and_revises_an_artifact(monkeypatch, tmp_path):
     assert revised.id == "A1" and revised.version == 2
     assert revised.title == "Debt brief" and session.artifacts == (revised,)
     assert second.steps[-1].title == "Revising an artifact"
+    # The text a revision replaced is still held, with the turn that wrote it.
+    assert session.artifact_versions("A1") == (written, revised)
+    with pytest.raises(InputError, match="no such artifact"):
+        session.artifact_versions("A9")
 
     # An answer can be kept as a second artifact, and everything saves together.
     kept = session.keep_answer(0)
