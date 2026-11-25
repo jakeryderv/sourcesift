@@ -108,20 +108,40 @@ def describe_result(
         return "done", _short(content.get("title", "")), ()
     lines = []
     fresh = 0
+    upgraded = 0
     evidence = content.get("evidence")
     for item in evidence if isinstance(evidence, list) else []:
-        if not isinstance(item, dict) or str(item.get("id")) in seen:
+        if not isinstance(item, dict):
             continue
-        seen.add(str(item.get("id")))
+        key = str(item.get("id"))
+        line = f"[{item.get('id')}] {_short(item.get('title', ''), 120)}"
+        # The same ID with the full text replaces an earlier feed summary.
+        full = f"{key}:article"
+        if key in seen:
+            if item.get("kind") == "article" and full not in seen:
+                seen.add(full)
+                upgraded += 1
+                lines.append(f"{line} (full article)")
+            continue
+        seen.add(key)
+        if item.get("kind") == "article":
+            seen.add(full)
         fresh += 1
-        lines.append(f"[{item.get('id')}] {_short(item.get('title', ''), 120)}")
+        lines.append(line)
     notes = content.get("limitations")
     for note in notes if isinstance(notes, list) else []:
         if str(note) not in seen:
             seen.add(str(note))
             lines.append(f"Note: {_short(note, 240)}")
-    summary = f"{fresh} new item{'s' if fresh != 1 else ''}" if fresh else "Nothing new"
-    return ("done" if fresh else "failed"), summary, tuple(lines[:40])
+    if fresh:
+        summary = f"{fresh} new item{'s' if fresh != 1 else ''}"
+    elif upgraded:
+        summary = (
+            "Read the full article" if upgraded == 1 else f"Read {upgraded} articles"
+        )
+    else:
+        summary = "Nothing new"
+    return ("done" if fresh or upgraded else "failed"), summary, tuple(lines[:40])
 
 
 def steps_from_messages(

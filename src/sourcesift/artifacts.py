@@ -97,10 +97,16 @@ def artifact_from_answer(
     prompt: str, result: Result, *, artifact_id: str = "A1", now: datetime | None = None
 ) -> Artifact:
     """Turn a finished answer into an artifact, keeping its citations and figures."""
+    text = result.answer.strip()
+    title = title_from(prompt)
+    heading = re.match(r"#{1,6}[ \t]+(.+?)[ \t#]*\n+(?=\S)", text)
+    if heading:
+        # The answer names itself; the request would repeat above that heading.
+        title, text = title_from(heading[1].replace("*", "")), text[heading.end() :]
     return Artifact(
         id=artifact_id,
-        title=title_from(prompt),
-        markdown=result.answer.strip(),
+        title=title,
+        markdown=text,
         notes=result.limitations,
         updated_at=now or datetime.now(UTC),
     )

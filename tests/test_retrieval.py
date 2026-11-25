@@ -1481,3 +1481,33 @@ def test_import_does_not_warn_about_optional_socks_support():
         check=True,
     )
     assert "SOCKS support" not in done.stderr
+
+
+def test_links_in_a_request_keep_their_own_brackets():
+    from sourcesift.retrieval.research import _trim_url
+
+    wiki = "https://en.wikipedia.org/wiki/Quarto_(software)"
+    assert _trim_url(wiki) == wiki
+    assert _trim_url(f"{wiki}).") == wiki
+    assert _trim_url("https://example.com/a?b=1,") == "https://example.com/a?b=1"
+    assert _trim_url("https://example.com/list[1]]") == "https://example.com/list[1]"
+
+
+def test_reading_an_article_already_listed_is_a_finished_step():
+    from sourcesift.agents.steps import describe_result
+
+    seen: set[str] = set()
+    summary = {"id": "S1", "title": "Library approved", "kind": "feed_summary"}
+    assert describe_result("research", {"evidence": [summary]}, seen)[:2] == (
+        "done",
+        "1 new item",
+    )
+    article = {**summary, "kind": "article"}
+    state, text, lines = describe_result("read_article", {"evidence": [article]}, seen)
+    assert (state, text) == ("done", "Read the full article")
+    assert lines == ("[S1] Library approved (full article)",)
+    # The same reply again adds nothing.
+    assert describe_result("read_article", {"evidence": [article]}, seen)[:2] == (
+        "failed",
+        "Nothing new",
+    )

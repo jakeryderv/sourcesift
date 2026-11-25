@@ -264,7 +264,7 @@ function showArtifact(id) {
     }));
     const save = el("button", { type: "button", class: "ghost" }, "Download");
     save.title = "A zip with the Quarto file, its references, and its figures";
-    save.addEventListener("click", () => act(save, () => download(artifact, "zip")));
+    save.addEventListener("click", () => act(save, async () => { await download(artifact, "zip"); toast("Downloaded"); }));
     tools.append(copy, save);
     if (state.formats.length) {
       const pick = el("select", { "aria-label": "Export with Quarto" });
@@ -334,7 +334,12 @@ function fillTurn(node, turn, index) {
     try { await navigator.clipboard.writeText(result.answer); toast("Answer copied"); } catch { toast("Copying is not available here."); }
   });
   foot.append(copy);
-  if (!result.artifacts.length) {
+  // An answer kept earlier is already an artifact; keeping it again would copy it.
+  const kept = state.artifacts.find((item) => item.version === 1 && result.answer.trim().endsWith(item.markdown));
+  if (kept) {
+    const open = el("button", { type: "button", class: "ghost", "data-artifact": kept.id }, "Open artifact");
+    foot.append(open);
+  } else if (!result.artifacts.length) {
     const keep = el("button", { type: "button", class: "ghost" }, "Keep as artifact");
     keep.addEventListener("click", async () => {
       keep.disabled = true;
@@ -342,6 +347,7 @@ function fillTurn(node, turn, index) {
         const data = await (await api(sessionPath("/artifacts"), { method: "POST", body: { turn: index } })).json();
         setArtifacts(data.artifacts);
         showArtifact(data.id);
+        keep.replaceWith(el("button", { type: "button", class: "ghost", "data-artifact": data.id }, "Open artifact"));
         refreshConversations();
       } catch (error) { toast(error.message); keep.disabled = false; }
     });
@@ -444,6 +450,8 @@ function showConversation(data) {
   $("title").textContent = data.title || "New chat";
   $("model").textContent = data.model || "no model selected";
   transcript.replaceChildren();
+  // Known before the turns are drawn, so each can tell whether it was kept.
+  state.artifacts = data.artifacts;
   if (data.turns.length) data.turns.forEach(renderTurn);
   else transcript.append($("empty-state").content.cloneNode(true));
   setArtifacts(data.artifacts);
@@ -551,7 +559,7 @@ const input = $("prompt");
 function resize() { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 200)}px`; }
 function submit() {
   const prompt = input.value;
-  if (state.busy || !prompt.trim()) return;
+  if (state.busy || !state.session || !prompt.trim()) return;
   input.value = "";
   resize();
   send(prompt);
@@ -588,6 +596,8 @@ if (fromLink) {
   history.replaceState(null, "", location.pathname);
 }
 state.token = fromLink || recall("token") || "";
+// Pasting the launch link into a tab that is already open only changes the fragment.
+window.addEventListener("hashchange", () => { if (location.hash.length > 1) location.reload(); });
 start().catch((error) => {
   transcript.replaceChildren(el("div", { class: "empty" }));
   transcript.firstChild.append(el("h2", {}, "Not connected"), el("p", { class: "muted" }, error.message));

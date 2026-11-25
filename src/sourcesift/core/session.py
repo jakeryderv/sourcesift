@@ -185,7 +185,7 @@ class Session:
             raise InputError("Finish or cancel the active turn before renaming.")
         self._title = cleaned
         if self._saved:
-            self._save()
+            self._save(touch=False)
 
     @property
     def saved_path(self) -> Path | None:
@@ -234,7 +234,7 @@ class Session:
         self._id = conversation_id
         self._saved = True
 
-    def _save(self) -> None:
+    def _save(self, *, touch: bool = True) -> None:
         if self._store is None:
             return
         assert self._id is not None
@@ -257,6 +257,7 @@ class Session:
                 ),
                 context=self._context,
             ),
+            touch=touch,
         )
         self._saved = True
         if self._state.artifacts:

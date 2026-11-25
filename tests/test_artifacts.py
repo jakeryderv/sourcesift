@@ -281,3 +281,16 @@ def test_quarto_renders_a_saved_artifact_without_running_anything(tmp_path):
     assert "Injected Heading" in html and "<h1>Injected" not in html
     assert "<script>document.title" not in html and "&lt;script&gt;" in html
     assert not (tmp_path / "RAN").exists()
+
+
+def test_kept_answer_takes_its_own_heading_as_the_title():
+    kept = artifact_from_answer(
+        "Chart the debt.",
+        result(answer="### Debt over the **past** year\n\nIt rose [S1]."),
+    )
+    assert (kept.title, kept.markdown) == ("Debt over the past year", "It rose [S1].")
+    # Without a heading, or with nothing under it, the request names the artifact.
+    plain = artifact_from_answer("Chart the debt.", result(answer="It rose [S1]."))
+    assert (plain.title, plain.markdown) == ("Chart the debt.", "It rose [S1].")
+    bare = artifact_from_answer("Chart the debt.", result(answer="## Only a heading"))
+    assert (bare.title, bare.markdown) == ("Chart the debt.", "## Only a heading")

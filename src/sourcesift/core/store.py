@@ -131,9 +131,22 @@ class SessionStore:
             Path(temporary).unlink(missing_ok=True)
             raise
 
-    def write(self, conversation_id: str, data: SavedConversation) -> None:
-        """Replace a conversation atomically, readable by the user only."""
+    def write(
+        self, conversation_id: str, data: SavedConversation, *, touch: bool = True
+    ) -> None:
+        """Replace a conversation atomically, readable by the user only.
+
+        ``touch=False`` keeps the time it was last updated, for a change such
+        as a new name that should not move it in the list.
+        """
         folder = self.folder(conversation_id)
+        updated = datetime.now(UTC)
+        if not touch:
+            try:
+                raw = self._bounded(folder / "meta.json", MAX_META_BYTES)
+                updated = ConversationInfo.model_validate_json(raw).updated_at
+            except (OSError, ValueError):
+                pass
         try:
             self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             folder.mkdir(exist_ok=True, mode=0o700)
@@ -144,7 +157,7 @@ class SessionStore:
             info = ConversationInfo(
                 id=conversation_id,
                 title=data.title,
-                updated_at=datetime.now(UTC),
+                updated_at=updated,
                 turns=len(data.turns),
                 artifacts=len(data.artifacts),
             )
