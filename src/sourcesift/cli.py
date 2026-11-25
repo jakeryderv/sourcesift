@@ -166,19 +166,21 @@ def web(
     model: str | None = None,
     reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"]
     | None = None,
-    save: bool = False,
+    save: bool = True,
     continue_: Annotated[bool, Parameter(name=("--continue", "-c"))] = False,
     port: int = 0,
     browser: bool = True,
 ) -> None:
-    """Open the research chat as a local web page that can draw charts and tables.
+    """Open the research chat as a local web page with saved conversations.
 
-    The server listens on this computer only and stops with Ctrl+C.
+    The server listens on this computer only and stops with Ctrl+C. Conversations
+    and their artifacts are saved in the sessions directory unless --no-save is given.
 
     Parameters:
         file: Context file loaded at session start; repeat for multiple files.
-        save: Save each conversation to a file after each completed turn.
-        continue_: Continue the most recently saved conversation.
+        save: Save each conversation after each completed turn; --no-save keeps
+            them in memory only.
+        continue_: Open the most recently saved conversation first.
         config: TOML file; overrides SOURCESIFT_CONFIG and the user default.
         model: OpenRouter provider/model ID.
         reasoning_effort: Optional reasoning effort supported by the selected model.
@@ -213,7 +215,7 @@ def web(
         token=token,
         hosts=(f"127.0.0.1:{port}", f"localhost:{port}"),
         files_=[str(path) for path in file or ()],
-        save=True if save else None,
+        save=save,
         resume=continue_,
     )
     url = f"http://127.0.0.1:{port}/#{token}"

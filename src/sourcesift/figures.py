@@ -137,15 +137,28 @@ def check_figure(figure: Figure) -> None:
     _plan(figure)
 
 
+def _compact(value: float) -> str:
+    """A tick value as people write large numbers: 38.1T, 2.5M, 1,200."""
+    size = abs(value)
+    for limit, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M")):
+        if size >= limit:
+            return f"{value / limit:,.4g}{suffix}"
+    return f"{value:,.10g}"
+
+
 def _label_axis(axis, unit: str) -> None:
     from matplotlib.ticker import FuncFormatter
 
     if unit in {"USD", "$"}:
-        axis.set_major_formatter(FuncFormatter(lambda value, _: f"${value:,.10g}"))
+        axis.set_major_formatter(FuncFormatter(lambda value, _: f"${_compact(value)}"))
     elif unit == "%" or unit.startswith("°"):
-        axis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:,.10g}{unit}"))
-    elif unit:
-        axis.set_label_text(unit, color=_INK)
+        axis.set_major_formatter(
+            FuncFormatter(lambda value, _: f"{_compact(value)}{unit}")
+        )
+    else:
+        axis.set_major_formatter(FuncFormatter(lambda value, _: _compact(value)))
+        if unit:
+            axis.set_label_text(unit, color=_INK)
 
 
 def _positions(plan: _Plan, across: list[Cell], name: str) -> list:

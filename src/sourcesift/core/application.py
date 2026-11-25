@@ -12,6 +12,7 @@ from sourcesift.builtin import BUILTIN_CATALOG, builtin_toolkit
 from sourcesift.core.config import Settings, load_settings
 from sourcesift.core.context import prepare_request
 from sourcesift.core.session import Session
+from sourcesift.core.store import ConversationInfo, SessionStore
 from sourcesift.errors import ConfigurationError, InputError
 from sourcesift.extend import DataSource, Toolkit
 from sourcesift.models import Request, Result
@@ -85,12 +86,13 @@ class SourceSift:
         *,
         files: Sequence[str | Path] = (),
         save: bool | None = None,
-        resume: bool = False,
+        resume: bool | str = False,
     ) -> Session:
         """Create an independent conversation with snapshotted context.
 
         It stays in memory unless ``save`` is true or ``[sessions].save`` is set.
-        ``resume`` continues the most recently saved conversation.
+        ``resume=True`` continues the most recently saved conversation, and
+        ``resume="<id>"`` the one with that ID from ``conversations()``.
         """
         return Session(
             self.settings,
@@ -100,6 +102,14 @@ class SourceSift:
             save=self.settings.sessions.save if save is None else save,
             resume=resume,
         )
+
+    def conversations(self) -> list[ConversationInfo]:
+        """Saved conversations, most recently updated first."""
+        return SessionStore(self.settings.sessions.directory).list()
+
+    def delete_conversation(self, conversation_id: str) -> None:
+        """Delete a saved conversation and the artifacts saved with it."""
+        SessionStore(self.settings.sessions.directory).delete(conversation_id)
 
     async def run(
         self,

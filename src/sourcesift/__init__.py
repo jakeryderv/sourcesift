@@ -13,6 +13,7 @@ from sourcesift.core.config import (
     load_settings,
 )
 from sourcesift.core.session import Session
+from sourcesift.core.store import ConversationInfo
 from sourcesift.data import Column, Figure, Table
 from sourcesift.errors import (
     ConfigurationError,
@@ -48,6 +49,7 @@ __all__ = [
     "ConfigurationError",
     "ContextDocument",
     "ContextSettings",
+    "ConversationInfo",
     "DataSource",
     "FetchContext",
     "Figure",
