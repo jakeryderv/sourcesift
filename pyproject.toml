@@ -1,6 +1,6 @@
 [project]
 name = "sourcesift"
-version = "0.7.0"
+version = "0.8.0"
 description = "A research agent with a local web app, Python SDK, and CLI: registered sources and evidence-backed answers."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -2,6 +2,27 @@
 
 Release Please maintains this file through reviewed release PRs.
 
+## [0.8.0](https://github.com/jakeryderv/sourcesift/compare/v0.7.0...v0.8.0) (2026-11-25)
+
+
+### Features
+
+* add US labor and price statistics from the Bureau of Labor Statistics ([#54](https://github.com/jakeryderv/sourcesift/issues/54)) ([d1e8273](https://github.com/jakeryderv/sourcesift/commit/d1e8273227c05823ba2d2b5ae881b8a0d1c167b9))
+* keep and show earlier versions of a revised artifact ([#57](https://github.com/jakeryderv/sourcesift/issues/57)) ([aaf2543](https://github.com/jakeryderv/sourcesift/commit/aaf2543aa6cafef594880ce0c6b8943c309e9e41))
+* number citations in exported artifacts ([#56](https://github.com/jakeryderv/sourcesift/issues/56)) ([67a23fb](https://github.com/jakeryderv/sourcesift/commit/67a23fba3bd20d330fe6cf92012cf6cf5b1fa603))
+* read sites that refuse robots.txt, and take more items per feed ([#55](https://github.com/jakeryderv/sourcesift/issues/55)) ([1fbeb1b](https://github.com/jakeryderv/sourcesift/commit/1fbeb1b4794eab8becaccab06859b420d21828e9))
+* summarize table rows for charts and let the model read them ([#53](https://github.com/jakeryderv/sourcesift/issues/53)) ([d69197b](https://github.com/jakeryderv/sourcesift/commit/d69197b99ed3e5636b979ad223943c8d3cf12cbd))
+
+
+### Bug Fixes
+
+* correct problems found while testing the web app ([#50](https://github.com/jakeryderv/sourcesift/issues/50)) ([3ce55b6](https://github.com/jakeryderv/sourcesift/commit/3ce55b6a576785c877b2b4dbec1b87d81b70e8dd))
+
+
+### Performance
+
+* send the model less repeated text in each request ([#52](https://github.com/jakeryderv/sourcesift/issues/52)) ([41a8663](https://github.com/jakeryderv/sourcesift/commit/41a866328004054c74afa105421bb144f1a4972f))
+
 ## [0.7.0](https://github.com/jakeryderv/sourcesift/compare/v0.6.0...v0.7.0) (2026-11-25)
 
 
