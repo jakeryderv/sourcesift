@@ -68,6 +68,17 @@ def _problems(exc: ValidationError) -> str:
     )
 
 
+def _trim_url(value: str) -> str:
+    """Drop sentence punctuation after a link, keeping a bracket the link opened."""
+    pairs = {")": "(", "]": "[", "}": "{"}
+    while value and value[-1] in ".,;:!?)]}":
+        last = value[-1]
+        if last in pairs and value.count(pairs[last]) >= value.count(last):
+            break
+        value = value[:-1]
+    return value
+
+
 class Research:
     """Bounded shared tool implementation, independent of the model framework."""
 
@@ -110,7 +121,7 @@ class Research:
         self.direct: set[str] = set()
         for value in re.findall(r"https?://[^\s<>\"']+", prompt):
             try:
-                self.direct.add(normalize_url(value.rstrip(".,;:!?)]}")))
+                self.direct.add(normalize_url(_trim_url(value)))
             except RetrievalError:
                 pass
         self.allowed.update(self.direct)

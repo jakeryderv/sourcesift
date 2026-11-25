@@ -132,7 +132,8 @@ async def test_save_and_continue_keep_history_evidence_and_context(
     reopened.rename("  Library   watch ")
     with pytest.raises(InputError, match="name"):
         reopened.rename("   ")
-    assert [c.title for c in app.conversations()] == ["Library watch", "Other news"]
+    # A new name does not move the conversation up the list.
+    assert [c.title for c in app.conversations()] == ["Other news", "Library watch"]
     assert app.session(resume=oldest.id).title == "Library watch"
     kept = reopened.keep_answer(0)
     assert reopened.artifacts_path == path.parent / "artifacts"

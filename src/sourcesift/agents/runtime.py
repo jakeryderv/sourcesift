@@ -167,6 +167,7 @@ class ConversationState:
 
 
 EventHandler = Callable[[SessionEvent], None]
+_COVERAGE = "Coverage window:"
 
 
 @asynccontextmanager
@@ -467,16 +468,25 @@ async def run_agent(
         limitations.append(
             "Some cited evidence is retained from earlier turns, not freshly retrieved; see retrieval timestamps."
         )
-        limitations.extend(state.limitations if state else ())
+        limitations.extend(
+            note
+            for note in (state.limitations if state else ())
+            # This turn states its own window below.
+            if not (research.window and note.startswith(_COVERAGE))
+        )
     if research.attempted and not research.evidence and not references:
         answer = "I could not retrieve usable evidence for this request. Current reporting could not be verified."
     if research.window:
-        start = (
-            research.window.start.isoformat() if research.window.start else "unbounded"
-        )
+        zone = research.window.timezone
+        end = f"{research.window.end:%Y-%m-%d %H:%M}"
         limitations.insert(
             0,
-            f"Coverage window: {start} to {research.window.end.isoformat()} ({research.window.timezone}); this is a limited source sample.",
+            (
+                f"{_COVERAGE} {research.window.start:%Y-%m-%d %H:%M} to {end} ({zone})"
+                if research.window.start
+                else f"{_COVERAGE} no date limit; checked {end} ({zone})"
+            )
+            + "; this is a limited source sample.",
         )
     if response.response.finish_reason == "length":
         limitations.append(

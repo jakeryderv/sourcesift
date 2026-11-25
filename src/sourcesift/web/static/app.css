@@ -90,9 +90,13 @@ button.ghost:hover { background: var(--surface-2); color: var(--text-primary); }
 .conversation-title { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .conversation.current .conversation-title { font-weight: 600; }
 .conversation-meta { font-size: 12px; color: var(--text-muted); }
-.row-tool { display: none; font-size: 12px; padding: 3px 6px; white-space: nowrap; }
+/* The row's tools sit over its right edge, so the name keeps its width. */
+.conversation { position: relative; }
+.conversation .row-tool { display: none; position: absolute; top: 50%; transform: translateY(-50%); right: 4px; font-size: 12px; padding: 3px 6px; white-space: nowrap; background: var(--surface-1); box-shadow: -10px 0 8px var(--surface-1); }
+.row-tool[aria-label="Rename"] { right: 52px; }
 .conversation:hover .row-tool, .conversation:focus-within .row-tool { display: block; }
 .row-tool.confirm { display: block; color: var(--series-8); }
+.conversation:has(.confirm) .row-tool[aria-label="Rename"] { display: none; }
 .rename { flex: 1; min-width: 0; font: inherit; font-size: 14px; margin: 5px 6px; padding: 3px 6px; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface-1); color: var(--text-primary); }
 
 .bar { display: flex; align-items: center; gap: 4px; padding: 8px 14px; }
@@ -156,6 +160,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 .answer table { border-collapse: collapse; margin: 12px 0; display: block; overflow-x: auto; }
 .answer th, .answer td { border-bottom: 1px solid var(--border); padding: 6px 14px 6px 0; text-align: left; }
 .answer code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; font-size: 13.5px; }
+.answer pre { background: var(--surface-2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; line-height: 1.5; }
+.answer pre code { background: none; padding: 0; }
 .answer a { color: var(--accent); }
 .answer.streaming > :last-child::after { content: "▍"; color: var(--text-muted); animation: blink 1s steps(2) infinite; margin-left: 2px; }
 @keyframes blink { 50% { opacity: 0; } }
