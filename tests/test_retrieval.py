@@ -32,8 +32,9 @@ from sourcesift.builtin import (
     weather,
 )
 from sourcesift.contract import Contract
-from sourcesift.data import Figure, StatView, Table, TableView
-from sourcesift.extend import Record, SourceResult, Toolkit, source, widget
+from sourcesift.data import Figure, Table
+from sourcesift.extend import Record, SourceResult, Toolkit, source
+from sourcesift.figures import check_figure, render_png
 from sourcesift.retrieval import http
 from sourcesift.retrieval.http import Fetcher, Page, public_address
 from sourcesift.retrieval.parsing import (
@@ -827,8 +828,8 @@ async def test_hacker_news_front_page_and_windowed_search():
     assert "Details here." in item.text and "ignored" not in item.text
     assert item.limitations == () and reply["evidence"]
     assert run.selected == ["hacker-news"]
-    # The same stories are returned as a table that a widget can show.
-    assert reply["showable"] == [
+    # The same stories are returned as a table that can be charted.
+    assert reply["chartable"] == [
         {
             "evidence_id": "S1",
             "tables": [
@@ -969,7 +970,7 @@ async def test_treasury_debt_history_is_evidence_and_a_table():
     assert "3 daily records from 2026-10-10 (37000000000000.00)" in item.text
     assert "to 2026-10-14 (38000000000300.50)" in item.text
     # The model is told each table's columns, which is all it needs to pick a chart.
-    assert reply["showable"] == [
+    assert reply["chartable"] == [
         {
             "evidence_id": "S1",
             "tables": [
@@ -1023,173 +1024,174 @@ TOTAL = "Total public debt outstanding"
 
 
 @pytest.mark.asyncio
-async def test_show_draws_only_retrieved_data_with_validated_options():
+async def test_make_figure_draws_only_retrieved_data_with_checked_columns():
     fetcher = api_fetcher(debt_rows())
     run = Research(Settings(), SourceRegistry([TREASURY]), fetcher, "debt", now=NOW)
-    line = {"title": "Debt", "x": "Date", "y": [TOTAL], "log_scale": True}
-    assert "No data is attached" in str((await run.show("S1", "chart", line))["error"])
+    line: Any = {"kind": "line", "x": "Date", "y": [TOTAL], "title": "Debt"}
+    assert "No table is attached" in str((await run.make_figure("S1", **line))["error"])
     await run.query_source("us-treasury", {"dataset": "debt"})
 
-    shown = await run.show(" [S1] ", "chart", line)
-    assert shown == {
-        "shown": "chart",
+    made = await run.make_figure(" [S1] ", **line, log_scale=True)
+    assert made == {
+        "figure": "F1",
         "title": "Debt",
-        "cite": "Cite [S1] in the answer, or this visual is omitted.",
+        "place": "![Debt](F1)",
+        "cite": "[S1]",
     }
-    (block,) = run.blocks
-    assert block.widget == "chart" and block.evidence_ids == ("S1",)
-    assert block.source_id == "us-treasury" and len(block.table.rows) == 3
-    assert block.options == line | {"kind": "line", "series": ""}
-    view: Any = block.view
-    assert isinstance(view, Figure) and view.overlay == "none"
-    (trace,) = view.data
-    assert trace["type"] == "scatter" and trace["mode"] == "lines"
-    assert trace["x"] == ["2026-10-10", "2026-10-13", "2026-10-14"]
-    assert trace["y"][-1] == 38000000000300.5 and trace["name"] == TOTAL
-    assert view.layout["xaxis"] == {"type": "date"}
-    assert view.layout["yaxis"] == {"tickprefix": "$", "type": "log"}
-    # Showing the same thing twice adds nothing.
-    assert "cite" not in await run.show("S1", "chart", line)
-    assert len(run.blocks) == 1
+    (figure,) = run.figures.values()
+    assert figure.id == "F1" and figure.evidence_ids == ("S1",)
+    assert figure.source_id == "us-treasury" and len(figure.table.rows) == 3
+    assert figure.kind == "line" and figure.x == "Date" and figure.y == (TOTAL,)
+    assert figure.log_scale is True and run.made == ["F1"]
+    # The picture is drawn from the recipe alone, the same bytes each time.
+    image = render_png(figure)
+    assert image.startswith(b"\x89PNG\r\n\x1a\n") and len(image) > 5000
+    assert render_png(Figure.model_validate(figure.model_dump())) == image
+    # Asking for the same chart twice adds nothing.
+    assert (await run.make_figure("S1", **line, log_scale=True))["figure"] == "F1"
+    assert len(run.figures) == 1
 
-    # The model cannot supply values or unknown options.
-    for options in (
-        {"x": "Date"},
-        line | {"data": [1, 2]},
-        line | {"title": "x" * 81},
-        line | {"kind": "radar"},
+    # Columns that do not fit the table come back with what would.
+    for change, text in (
+        ({"x": "Day"}, "There is no column 'Day'. Columns: Date, Total"),
+        ({"y": ["Date"]}, "Column 'Date' is not numeric."),
+        ({"y": [TOTAL, "Debt held by the public"], "series": "Date"}, "one y"),
+        ({"y": []}, "Invalid chart: y"),
+        ({"title": "x" * 200}, None),
+        ({"kind": "donut", "y": ["Intragovernmental holdings"]}, None),
     ):
-        reply = await run.show("S1", "chart", options)
-        assert str(reply["error"]).startswith("Invalid options for chart: ")
-    # Options that do not fit the table come back with what would.
-    for options, text in (
-        (line | {"x": "Day"}, "There is no column 'Day'. Columns: Date, Total"),
-        (line | {"y": ["Date"]}, "Column 'Date' is not numeric."),
-        (line | {"y": [TOTAL, "Debt held by the public"], "series": "Date"}, "one y"),
-        (line | {"kind": "donut", "y": ["Intragovernmental holdings"]}, None),
-    ):
-        reply = await run.show("S1", "chart", options)
-        assert (text or "shown") in str(reply.get("error", reply))
-    assert (
-        "Unknown widget. Widgets: chart, table, stats, map."
-        == (await run.show("S1", "pie"))["error"]
-    )
-    assert "no latitude column" in str((await run.show("S1", "map"))["error"])
+        reply = await run.make_figure("S1", **(line | change))
+        assert (text or "figure") in str(reply.get("error", reply))
     assert "No table has that name. Tables: US public debt" in str(
-        (await run.show("S1", "table", table="Rates"))["error"]
+        (await run.make_figure("S1", **line, table="Rates"))["error"]
     )
-    donut: Any = run.blocks[1].view
-    assert len(run.blocks) == 2 and donut.data[0]["type"] == "pie"
+    assert [f.kind for f in run.figures.values()] == ["line", "line", "donut"]
+    assert len(run.figures["F2"].title) == 120
 
     # Several numeric columns become several series, and bars stack.
-    await run.show(
+    stacked = await run.make_figure(
         "S1",
-        "chart",
-        {
-            "kind": "stacked_bar",
-            "x": "Date",
-            "y": ["Debt held by the public", "Intragovernmental holdings"],
-        },
+        "stacked_bar",
+        "Date",
+        ["Debt held by the public", "Intragovernmental holdings"],
+        table="us public debt, 2026-10-10  to 2026-10-14",
     )
-    bars: Any = run.blocks[2].view
-    assert [t["type"] for t in bars.data] == ["bar", "bar"]
-    assert bars.layout["barmode"] == "stack" and bars.layout["showlegend"] is True
-    assert bars.data[1]["y"] == [8000000000000.0, None, 8000000000100.25]
-
-    await run.show("S1", "stats", table="us public debt, 2026-10-10 to 2026-10-14")
-    figures = run.blocks[3].view
-    assert isinstance(figures, StatView)
-    assert figures.title == "US public debt, 2026-10-10 to 2026-10-14"
-    # The latest row, each with its change from the row before where both exist.
-    assert [(i.label, i.value, i.unit, i.change) for i in figures.items] == [
-        (TOTAL, 38000000000300.5, "USD", 200.0),
-        ("Debt held by the public", 30000000000200.25, "USD", 100.0),
-        ("Intragovernmental holdings", 8000000000100.25, "USD", None),
+    bars = run.figures[str(stacked["figure"])]
+    assert bars.title == "US public debt, 2026-10-10 to 2026-10-14"
+    assert render_png(bars).startswith(b"\x89PNG")
+    # A placed figure counts as citing the evidence its table came with.
+    assert [f.id for f in run.figures_in("See ![a](F4) and ![b]( F1 ).")] == [
+        "F4",
+        "F1",
     ]
-    # A visual is kept only when the answer cites its evidence.
-    assert run.blocks_for("Debt rose [S1].") == tuple(run.blocks)
-    assert run.blocks_for("Debt rose [S9].") == () == run.blocks_for("Debt rose.")
+    assert run.unknown_figures("![x](F1) ![y](F9) ![z](https://a.test/b.png)") == {"F9"}
+    assert [r.id for r in run.references("Chart: ![Debt](F1)")] == ["S1"]
+    assert run.references("No chart, no citation.") == ()
+    # The per-answer limit counts this run's figures.
+    assert "limit on figures for one answer" in str(
+        (await run.make_figure("S1", "bar", "Date", [TOTAL]))["error"]
+    )
 
     limited = Research(
-        Settings(limits=Limits(max_blocks=1)),
+        Settings(limits=Limits(max_figures=1)),
         SourceRegistry([TREASURY]),
         fetcher,
         "debt",
         now=NOW,
         datasets=run.datasets,
+        figures=run.figures,
     )
-    # Data from an earlier turn can still be shown, up to the per-answer limit.
-    assert (await limited.show("S1", "stats"))["shown"] == "stats"
-    assert "limit" in str((await limited.show("S1", "chart", line))["error"])
+    # Data from an earlier turn can still be drawn, and IDs continue.
+    assert (await limited.make_figure("S1", "area", "Date", [TOTAL]))["figure"] == "F5"
+    assert "limit" in str(
+        (await limited.make_figure("S1", "scatter", "Date", [TOTAL]))["error"]
+    )
 
 
 def test_chart_kinds_follow_the_columns_they_are_given():
-    builtin = builtin_toolkit().widgets
     stories = Table(
         name="Stories",
         columns=({"name": "Story"}, {"name": "Points"}, {"name": "Topic"}),
         rows=(("A" * 60, 30, "ai"), ("Short", 10, "web"), (None, 5, "ai")),
     )
 
-    def draw(**options):
-        chart = builtin["chart"]
-        return chart.render(stories, chart.options.model_validate(options))
+    def draw(table=stories, **recipe):
+        figure = Figure.model_validate(
+            {
+                "id": "F1",
+                "title": "T",
+                "source_id": "s",
+                "evidence_ids": ("S1",),
+                "table": table,
+                "kind": "line",
+            }
+            | recipe
+        )
+        check_figure(figure)
+        return render_png(figure)
 
-    # Named categories are drawn sideways, shortened, with the full name on hover.
-    bars = draw(kind="bar", x="Story", y=["Points"])
-    (trace,) = bars.data
-    assert trace["orientation"] == "h" and trace["x"] == [30.0, 10.0]
-    assert trace["y"] == ["A" * 47 + "…", "Short"]
-    assert trace["customdata"] == ["A" * 60, "Short"]
-    assert bars.layout["yaxis"] == {"type": "category", "autorange": "reversed"}
-    assert bars.layout["height"] == 220 and "hovermode" not in bars.layout
-    # A text column splits one measure into a series per value.
-    split = draw(kind="bar", x="Story", y=["Points"], series="Topic")
-    assert [t["name"] for t in split.data] == ["ai", "web"]
-    donut = draw(kind="donut", x="Topic", y=["Points"])
-    assert donut.data[0]["labels"] == ["ai", "web", "ai"]
-    assert donut.data[0]["textinfo"] == "percent" and donut.layout["showlegend"]
-    assert donut.data[0]["values"] == [30.0, 10.0, 5.0]
-    for options, text in (
+    # Every kind draws from named columns: sideways bars, split series, parts.
+    pictures = [
+        draw(kind="bar", x="Story", y=["Points"]),
+        draw(kind="bar", x="Story", y=["Points"], series="Topic"),
+        draw(kind="stacked_bar", x="Points", y=["Points"], series="Topic"),
+        draw(kind="donut", x="Topic", y=["Points"]),
+        draw(kind="scatter", x="Points", y=["Points"], log_scale=True),
+        draw(kind="area", x="Points", y=["Points", "Points"][:1]),
+    ]
+    assert all(picture.startswith(b"\x89PNG") for picture in pictures)
+    assert len(set(pictures)) == len(pictures)
+    for recipe, text in (
         ({"kind": "line", "x": "Story", "y": ["Points"]}, "Use bar for categories"),
         ({"x": "Points", "y": ["Story"]}, "is not numeric"),
     ):
         with pytest.raises(ValueError, match=text):
-            draw(**options)
-    scatter = draw(kind="scatter", x="Points", y=["Points"])
-    assert scatter.data[0]["mode"] == "markers" and "hovermode" not in scatter.layout
+            draw(**recipe)
 
     many = Table(
         name="Many",
         columns=({"name": "K"}, {"name": "V", "unit": "%"}),
         rows=tuple((f"k{i}", i) for i in range(70)),
     )
-    chart = builtin["chart"]
     for kind in ("bar", "donut"):
         with pytest.raises(ValueError, match="bars|donut"):
-            chart.render(many, chart.options.model_validate(
-                {"kind": kind, "x": "K", "y": ["V"]}
-            ))  # fmt: skip
-    picked: Any = builtin["table"].render(
-        many, builtin["table"].options.model_validate({"columns": ["V"], "max_rows": 2})
+            draw(many, kind=kind, x="K", y=["V"])
+    timed = Table(
+        name="Timed",
+        columns=(
+            {"name": "When", "kind": "time"},
+            {"name": "Paid", "unit": "USD"},
+            {"name": "Owed", "unit": "USD"},
+        ),
+        rows=(("2026-01-01", 1, 4), ("2026-01-02T06:00:00+00:00", None, 5)),
     )
-    assert picked.rows == ((0,), (1,)) and picked.columns[0].unit == "%"
-    first: Any = builtin["stats"].render(
-        many, builtin["stats"].options.model_validate({"row": "first"})
-    )
-    assert [(i.label, i.value, i.change) for i in first.items] == [("V", 0, None)]
-    for bad in (
-        Table(name="x", columns=({"name": "a"},), rows=()),
-        Table(name="x", columns=({"name": "a"},), rows=(("text",),)),
+    assert draw(timed, kind="line", x="When", y=["Paid", "Owed"]).startswith(b"\x89PNG")
+    assert draw(timed, kind="area", x="When", y=["Paid", "Owed"]).startswith(b"\x89PNG")
+    with pytest.raises(ValueError, match="not a date or time"):
+        draw(
+            timed.model_copy(update={"rows": (("soon", 1, 2),)}),
+            x="When",
+            y=["Paid"],
+        )
+    for bad, text in (
+        (Table(name="x", columns=({"name": "a"}, {"name": "b"}), rows=()), "no rows"),
+        (
+            Table(name="x", columns=({"name": "a"}, {"name": "b"}), rows=((1, None),)),
+            "not numeric|no values",
+        ),
+        (
+            Table(name="x", columns=({"name": "a"}, {"name": "b"}), rows=(("p", 0),)),
+            "above zero",
+        ),
     ):
-        with pytest.raises(ValueError, match="no rows|no values"):
-            builtin["stats"].render(bad, builtin["stats"].options())
+        with pytest.raises(ValueError, match=text):
+            draw(bad, kind="donut" if "zero" in text else "bar", x="a", y=["b"])
     with pytest.raises(ValidationError, match="unique"):
         Table(name="x", columns=({"name": "a"}, {"name": "a"}), rows=())
 
 
 @pytest.mark.asyncio
-async def test_widgets_and_sources_are_independent_python_definitions():
+async def test_sources_are_independent_python_definitions():
     class Params(Contract):
         city: str
 
@@ -1212,45 +1214,14 @@ async def test_widgets_and_sources_are_independent_python_definitions():
                     "Readings for " + params.city, fetched.url, "30 readings", fetched
                 )
             ],
-            # Anything that is not a table is ignored rather than shown.
+            # Anything that is not a table is ignored rather than drawn.
             (table, "not a table"),  # ty: ignore[invalid-argument-type]
         )
-
-    class Options(Contract):
-        top: int = 3
-
-    @widget(id="top", description="First rows.", options=Options)
-    def top(data, options):
-        return TableView(
-            title="Top", columns=data.columns, rows=data.rows[: options.top]
-        )
-
-    @widget(id="gauge", description="A custom Plotly figure.")
-    def gauge(data, options):
-        value = data.rows[-1][1]
-        return Figure(title="Latest", data=({"type": "indicator", "value": value},))
-
-    @widget(id="broken", description="Fails.")
-    def broken(data, options):
-        return data.rows[100]
-
-    @widget(id="wrong", description="Returns no view.")
-    def wrong(data, options):
-        return "not a view"
-
-    @widget(id="picky", description="Explains itself.")
-    def picky(data, options):
-        raise ValueError("Needs a   Region column.")
 
     assert readings.source.capabilities == ("query",)
     with pytest.raises(ConfigurationError, match="unique"):
         Toolkit([readings, readings])
-    with pytest.raises(ConfigurationError, match="unique"):
-        Toolkit(widgets=[top, top])
-    builtin = builtin_toolkit()
-    toolkit = Toolkit(
-        [readings], [*builtin.widgets.values(), top, gauge, broken, wrong, picky]
-    )
+    toolkit = Toolkit([readings])
     fetcher = api_fetcher({})
     run = Research(
         Settings(),
@@ -1261,7 +1232,7 @@ async def test_widgets_and_sources_are_independent_python_definitions():
         toolkit=toolkit,
     )
     reply = await run.query_source("readings", {"city": "Oslo"})
-    assert reply["showable"] == [
+    assert reply["chartable"] == [
         {
             "evidence_id": "S1",
             "tables": [
@@ -1276,23 +1247,10 @@ async def test_widgets_and_sources_are_independent_python_definitions():
             ],
         }
     ]
-    # A built-in widget shows a new source's data, and new widgets show it too.
-    await run.show("S1", "table", {"max_rows": 2})
-    await run.show("S1", "top")
-    await run.show("S1", "gauge")
-    first, second, third = run.blocks
-    assert isinstance(first.view, TableView) and len(first.view.rows) == 2
-    assert first.source_id == "readings" and first.table.name == "Readings"
-    assert isinstance(second.view, TableView) and second.view.title == "Top"
-    assert second.options == {"top": 3} and len(second.view.rows) == 3
-    # A widget may return any Plotly figure.
-    assert isinstance(third.view, Figure)
-    assert third.view.data == ({"type": "indicator", "value": 29},)
-    for name in ("broken", "wrong"):
-        assert "could not draw" in str((await run.show("S1", name))["error"])
-    # A widget's own explanation reaches the model, on one line.
-    assert (await run.show("S1", "picky"))["error"] == "Needs a Region column."
-    assert len(run.blocks) == 3
+    # A new source's table is charted like any built-in one.
+    made = await run.make_figure("S1", "bar", "Id", ["Value"])
+    figure = run.figures[str(made["figure"])]
+    assert figure.source_id == "readings" and figure.title == "Readings"
 
     # The same source is not queryable without its implementation.
     plain = Research(
@@ -1364,7 +1322,7 @@ def weather_fetcher(places=PLACES, forecast=FORECAST):
 async def test_weather_resolves_a_place_and_returns_four_tables():
     fetcher, calls = weather_fetcher()
     run = Research(
-        Settings(limits=Limits(max_blocks=6)),
+        Settings(),
         SourceRegistry([weather.source]),
         fetcher,
         "x",
@@ -1394,14 +1352,14 @@ async def test_weather_resolves_a_place_and_returns_four_tables():
     assert "Overcast, 60.5°F / ?°F, 10.0%" in item.text
     assert "not an official warning" in item.text
     place = "Portland, Maine, United States"
-    (showable,) = reply["showable"]
-    assert [t["table"] for t in showable["tables"]] == [
+    (chartable,) = reply["chartable"]
+    assert [t["table"] for t in chartable["tables"]] == [
         f"Weather now in {place}: Light rain",
         f"Location of {place}",
         f"Hourly temperature in {place}",
         f"Daily forecast for {place}",
     ]
-    assert showable["tables"][2]["columns"][0] == {"name": "Time", "kind": "time"}
+    assert chartable["tables"][2]["columns"][0] == {"name": "Time", "kind": "time"}
     now, located, hourly, daily = run.datasets["S1"].tables
     assert [(c.name, c.unit) for c in now.columns] == [
         ("Temperature", "°F"),
@@ -1424,37 +1382,22 @@ async def test_weather_resolves_a_place_and_returns_four_tables():
     assert hourly.rows == ((local[0], 50.1, 46.0), (local[1], 52.6, None))
     assert daily.rows[1] == ("2026-11-22", "Overcast", 60.5, None, 10.0)
 
-    # Without a table name, each widget draws the first table its options fit.
-    await run.show("S1", "map", {"overlay": "radar", "zoom": 9, "value": "Temperature"})
-    await run.show("S1", "chart", {"x": "Time", "y": ["Temperature", "Feels like"]})
-    await run.show("S1", "stats")
-    await run.show("S1", "table", table=f"daily forecast for  {place.upper()}")
-    views: Any = [block.view for block in run.blocks]
-    placed, lines, figures, forecast_table = views
-    assert isinstance(placed, Figure) and placed.overlay == "radar"
-    assert run.blocks[0].table is located
-    (marker,) = placed.data
-    assert marker["type"] == "scattermap" and marker["mode"] == "markers+text"
-    assert (marker["lat"], marker["lon"]) == ([43.66], [-70.26])
-    assert marker["text"] == [f"{place} · 52.6°F"]
-    # Radar imagery stops at a regional scale, so the map opens no closer.
-    assert placed.layout["map"] == {
-        "center": {"lat": 43.66, "lon": -70.26},
-        "zoom": 6,
-    }
-    assert [t["name"] for t in lines.data] == ["Temperature", "Feels like"]
-    assert lines.layout["yaxis"] == {"ticksuffix": "°F"}
-    assert lines.layout["hovermode"] == "x unified"
-    assert [i.label for i in figures.items][:2] == ["Temperature", "Feels like"]
-    assert len(figures.items) == 6 and figures.items[0].change is None
-    assert isinstance(forecast_table, TableView) and len(forecast_table.rows) == 2
-    assert forecast_table.columns[0].kind == "time"
-    assert "Invalid options" in str(
-        (await run.show("S1", "map", {"zoom": 20}))["error"]
+    # Without a table name, the first table the columns fit is drawn.
+    made = await run.make_figure("S1", "line", "Time", ["Temperature", "Feels like"])
+    lines = run.figures[str(made["figure"])]
+    assert lines.table is hourly and lines.title == f"Hourly temperature in {place}"
+    assert render_png(lines).startswith(b"\x89PNG")
+    named = await run.make_figure(
+        "S1",
+        "bar",
+        "Date",
+        ["High", "Low"],
+        table=f"daily forecast for  {place.upper()}",
     )
-    plain = await run.show("S1", "map", {"zoom": 9})
-    closer: Any = run.blocks[-1].view
-    assert plain["shown"] == "map" and closer.layout["map"]["zoom"] == 9
+    assert run.figures[str(named["figure"])].table is daily
+    assert "There is no column 'Nope'" in str(
+        (await run.make_figure("S1", "line", "Nope", ["High"]))["error"]
+    )
 
     # An unknown qualifier falls back to the best match; no match is reported.
     other, calls = weather_fetcher()
@@ -1487,7 +1430,7 @@ async def test_query_source_constraints_and_failures():
     assert any("not queryable" in note for note in run.limitations)
     reply = await run.query_source("hacker-news")
     assert any("returned no records" in note for note in run.limitations)
-    assert "showable" not in reply and not run.datasets
+    assert "chartable" not in reply and not run.datasets
 
     # A feed request for a queryable source explains which tool applies.
     feeds = Research(Settings(), registry, fetcher, "news", now=NOW)

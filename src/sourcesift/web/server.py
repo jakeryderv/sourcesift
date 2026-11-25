@@ -10,10 +10,9 @@ import asyncio
 import base64
 import json
 import logging
-import re
 import secrets
-import time
 from collections.abc import AsyncIterator, Iterable
+from html import escape
 from importlib.resources import files
 from typing import Any
 
@@ -26,46 +25,53 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from sourcesift.artifacts import new_artifact_folder, save_artifacts
 from sourcesift.core.application import SourceSift
 from sourcesift.core.session import Session
+from sourcesift.data import Figure
 from sourcesift.errors import InputError, SourceSiftError
+from sourcesift.figures import render_png
 from sourcesift.models import Result, SessionEvent
-from sourcesift.reports import save_report
-from sourcesift.retrieval.http import Fetcher
-from sourcesift.retrieval.urls import RetrievalError
 from sourcesift.sources import Source
 
 MAX_SESSIONS = 8
 MAX_BODY_BYTES = 1_048_576
-# Saving a report may carry a picture of each chart drawn in the page.
-MAX_REPORT_BYTES = 24_000_000
-# Radar imagery comes from one fixed service. This server looks up the current
-# frame; the browser then loads map and radar tiles itself.
-RADAR_INDEX = "https://api.rainviewer.com/public/weather-maps.json"
-RADAR_TILES = "https://tilecache.rainviewer.com{path}/256/{{z}}/{{x}}/{{y}}/2/1_1.png"
-RADAR_SECONDS = 300
-_MAPS = "https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com"
-_RADAR = "https://tilecache.rainviewer.com"
 _HEADERS = {
     "Cache-Control": "no-store",
-    # No inline script, no framing by other pages, and no remote content except
-    # map and radar tiles from the hosts named here. The chart library sets
-    # element styles and runs its map renderer in a worker made from a blob.
+    # No inline script, no framing by other pages, and no remote content at all.
+    # Figures arrive inside the page's own HTML; rendered tables set cell alignment.
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; "
-    "style-src 'self' 'unsafe-inline'; worker-src blob:; child-src blob:; "
-    f"img-src 'self' data: blob: {_MAPS} {_RADAR}; "
-    f"connect-src 'self' {_MAPS} {_RADAR}; "
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+    "connect-src 'self'; "
     "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
 }
-# Raw HTML and images in a model's answer are never rendered.
-_MARKDOWN = MarkdownIt("commonmark", {"html": False}).enable("table").disable("image")
+# Raw HTML in a model's text is never rendered, and the only images are figures.
+_MARKDOWN = MarkdownIt("commonmark", {"html": False}).enable("table")
 
 
-def render_markdown(text: str) -> str:
-    """Answer Markdown as HTML with raw HTML escaped and images left as text."""
-    return _MARKDOWN.render(text)
+def _image(renderer: Any, tokens: Any, index: int, options: Any, env: Any) -> str:
+    """Draw a placed figure; any other image becomes its description as text."""
+    token = tokens[index]
+    target = str(token.attrs.get("src", "")).strip()
+    figure = (env or {}).get("figures", {}).get(target)
+    label = escape(token.content)
+    if figure is None:
+        return f'<span class="missing-figure">{label or escape(target)}</span>'
+    data = base64.b64encode(render_png(figure)).decode()
+    return (
+        f'<img class="figure" data-figure="{escape(figure.id)}" '
+        f'alt="{escape(figure.title)}" src="data:image/png;base64,{data}">'
+    )
+
+
+_MARKDOWN.add_render_rule("image", _image)
+
+
+def render_markdown(text: str, figures: Iterable[Figure] = ()) -> str:
+    """Model Markdown as HTML: raw HTML escaped, and only known figures drawn."""
+    return _MARKDOWN.render(text, {"figures": {item.id: item for item in figures}})
 
 
 class Guard:
@@ -94,11 +100,7 @@ class Guard:
                 supplied.encode(), f"Bearer {self.token}".encode()
             ):
                 problem = "Open the link printed by ssift web."
-            elif int(request.headers.get("content-length") or 0) > (
-                MAX_REPORT_BYTES
-                if request.url.path.endswith("/report")
-                else MAX_BODY_BYTES
-            ):
+            elif int(request.headers.get("content-length") or 0) > MAX_BODY_BYTES:
                 problem = "Request is too large."
         if problem is not None:
             await JSONResponse({"error": problem}, 403, _HEADERS)(scope, receive, send)
@@ -119,7 +121,7 @@ def _turn(prompt: str, result: Result) -> dict[str, Any]:
     return {
         "prompt": prompt,
         "result": result.model_dump(mode="json"),
-        "answer_html": render_markdown(result.answer),
+        "answer_html": render_markdown(result.answer, result.figures),
     }
 
 
@@ -161,7 +163,6 @@ class Api:
         self.save = save
         self.resume = resume
         self.sessions: dict[str, Session] = {}
-        self.radar: tuple[float, str] | None = None
 
     async def _body(self, request: Request) -> dict[str, Any]:
         try:
@@ -214,7 +215,7 @@ class Api:
             if event.kind == "draft":
                 # Send the whole draft rendered, so the page never parses Markdown.
                 draft.append(event.text)
-                html = render_markdown("".join(draft))
+                html = render_markdown("".join(draft), session.figures)
                 queue.put_nowait({"event": "draft", "html": html})
             elif event.kind == "reset":
                 draft.clear()
@@ -263,51 +264,22 @@ class Api:
         session.enable_sources(enabled)
         return JSONResponse({"sources": _sources(session)})
 
-    async def report(self, request: Request) -> Response:
+    async def keep_answer(self, request: Request) -> Response:
+        """Keep an answer as an artifact and save it to the artifacts directory."""
         session = self._session(request)
         if not session.turns:
-            raise InputError("Nothing to save yet; ask a question first.")
-        body = await self._body(request)
-        index = body.get("turn", len(session.turns) - 1)
+            raise InputError("Nothing to keep yet; ask a question first.")
+        index = (await self._body(request)).get("turn", len(session.turns) - 1)
         if not isinstance(index, int) or not 0 <= index < len(session.turns):
-            raise InputError("There is no such answer to save.")
-        prompt, result = session.turns[index]
-        # The page may send a PNG of each chart it drew, keyed by its position.
-        sent = body.get("images", {})
-        images: dict[int, bytes] = {}
-        prefix = "data:image/png;base64,"
-        try:
-            for key, value in sent.items():
-                if not value.startswith(prefix):
-                    raise ValueError
-                images[int(key)] = base64.b64decode(
-                    value.removeprefix(prefix), validate=True
-                )
-        except (AttributeError, TypeError, ValueError):
-            raise InputError("The chart images could not be read.") from None
-        path = save_report(
-            prompt, result, session.settings.reports.directory, images=images
+            raise InputError("There is no such answer to keep.")
+        artifact = session.keep_answer(index)
+        folder = new_artifact_folder(
+            session.settings.artifacts.directory, artifact.title
         )
-        pictures = [
-            name
-            for key in sorted(images)
-            if (path.parent / (name := f"{path.stem}-{key + 1}.png")).is_file()
-        ]
-        return JSONResponse({"path": str(path), "images": pictures})
-
-    async def radar_tiles(self, request: Request) -> Response:
-        """Where the newest radar frame's tiles are, looked up every few minutes."""
-        if self.radar is None or time.monotonic() - self.radar[0] > RADAR_SECONDS:
-            try:
-                async with Fetcher(self.core.settings.limits) as fetcher:
-                    page = await fetcher.get(RADAR_INDEX, robots=False)
-                path = str(json.loads(page.body)["radar"]["past"][-1]["path"])
-            except (RetrievalError, ValueError, LookupError, TypeError):
-                path = ""
-            if not re.fullmatch(r"/v2/radar/[A-Za-z0-9_]{1,40}", path):
-                raise InputError("Radar imagery is unavailable right now.")
-            self.radar = (time.monotonic(), path)
-        return JSONResponse({"tiles": RADAR_TILES.format(path=self.radar[1])})
+        (path,) = save_artifacts(folder, [artifact], session.evidence, session.figures)
+        return JSONResponse(
+            {"id": artifact.id, "title": artifact.title, "path": str(path)}
+        )
 
 
 async def _input_error(request: Request, exc: Exception) -> Response:
@@ -333,8 +305,7 @@ def create_app(
             Route("/api/sessions/{id}/turns", api.run_turn, methods=["POST"]),
             Route("/api/sessions/{id}/sources", api.get_sources, methods=["GET"]),
             Route("/api/sessions/{id}/sources", api.put_sources, methods=["PUT"]),
-            Route("/api/sessions/{id}/report", api.report, methods=["POST"]),
-            Route("/api/radar", api.radar_tiles),
+            Route("/api/sessions/{id}/artifacts", api.keep_answer, methods=["POST"]),
             Mount("/", StaticFiles(directory=str(static), html=True)),
         ],
         middleware=[Middleware(Guard, hosts=frozenset(hosts), token=token)],

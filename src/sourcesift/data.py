@@ -1,12 +1,12 @@
-"""Tables that sources return, and what a page can draw from them.
+"""Tables that sources return, and the figures drawn from them.
 
-A source returns one or more ``Table`` values. A widget turns one table and
-typed options into a *view*: a ``Figure`` (a Plotly figure), a ``TableView``, or
-a ``StatView``. Sources and widgets never refer to each other, so any widget can
-show any source's table whose columns fit its options.
+A source returns one or more ``Table`` values. A ``Figure`` is a chart of one
+table: the columns and chart kind the model chose, with the rows the source
+returned. The picture is drawn from that recipe by ``sourcesift.figures``, so a
+figure's values never pass through the model.
 """
 
-from typing import Annotated, Literal
+from typing import Literal
 
 from pydantic import Field, JsonValue, model_validator
 
@@ -69,7 +69,7 @@ class Table(Contract):
         return [row[position] for row in self.rows]
 
     def describe(self) -> dict[str, JsonValue]:
-        """What the model needs in order to choose a widget and its columns."""
+        """What the model needs in order to choose a chart and its columns."""
         return {
             "table": self.name,
             "rows": len(self.rows),
@@ -81,60 +81,24 @@ class Table(Contract):
         }
 
 
-class Stat(Contract):
-    """One headline value; ``change`` is the difference from the previous value."""
-
-    label: str = Field(min_length=1, max_length=80)
-    value: float | str
-    unit: str = Field(default="", max_length=24)
-    change: float | None = None
+FigureKind = Literal["line", "area", "bar", "stacked_bar", "scatter", "donut"]
 
 
 class Figure(Contract):
-    """View: a Plotly figure, as the ``data`` and ``layout`` Plotly.js accepts.
+    """A chart of one table: what to plot, and the rows it is plotted from.
 
-    The interface applies its own colours and fonts. ``overlay`` asks it to add a
-    layer it knows how to fetch; only maps use it.
+    ``id`` (F1, F2, ...) is stable within a conversation. Markdown places a figure
+    with an image whose target is that ID, such as ``![Daily highs](F1)``. The
+    table is a snapshot of the data when it was retrieved.
     """
 
-    type: Literal["figure"] = "figure"
-    title: str = Field(max_length=120)
-    data: tuple[dict[str, JsonValue], ...] = Field(min_length=1, max_length=24)
-    layout: dict[str, JsonValue] = Field(default_factory=dict)
-    overlay: Literal["none", "radar"] = "none"
-
-
-class TableView(Contract):
-    """View: a table."""
-
-    type: Literal["table"] = "table"
-    title: str = Field(max_length=120)
-    columns: tuple[Column, ...] = Field(min_length=1, max_length=12)
-    rows: tuple[tuple[Cell, ...], ...] = Field(max_length=500)
-
-
-class StatView(Contract):
-    """View: a row of headline values."""
-
-    type: Literal["stat"] = "stat"
-    title: str = Field(max_length=120)
-    items: tuple[Stat, ...] = Field(min_length=1, max_length=12)
-
-
-View = Figure | TableView | StatView
-VIEWS = (Figure, TableView, StatView)
-
-
-class Block(Contract):
-    """A visual in an answer: a view, and the table and evidence it came from.
-
-    The view holds only values a source returned; the model chose the widget and
-    its options. It is a snapshot of the data when it was retrieved.
-    """
-
-    widget: str
-    evidence_ids: tuple[str, ...]
+    id: str = Field(pattern=r"^F[1-9]\d*$")
+    title: str = Field(min_length=1, max_length=120)
+    kind: FigureKind
+    x: str
+    y: tuple[str, ...] = Field(min_length=1, max_length=8)
+    series: str = ""
+    log_scale: bool = False
     source_id: str
-    options: dict[str, JsonValue]
+    evidence_ids: tuple[str, ...]
     table: Table
-    view: Annotated[View, Field(discriminator="type")]

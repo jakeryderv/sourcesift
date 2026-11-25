@@ -19,9 +19,11 @@ from sourcesift import (
     Request,
     SourceSift,
     SourceSiftError,
+    artifact_from_answer,
     load_settings,
-    save_report,
+    save_artifacts,
 )
+from sourcesift.artifacts import new_artifact_folder
 from sourcesift.models import Result
 
 app = App(
@@ -54,12 +56,16 @@ def render_result(result: Result, output_format: Literal["markdown", "plain"]) -
             f"Retrieved from: {ref.retrieved_from}"
             for ref in result.references
         )
-    if result.blocks:
-        # The terminal lists visuals; interfaces that can draw them use --json data.
-        text += "\n\nVisuals:\n" + "\n".join(
-            f"- {block.widget}: {block.view.title} "
-            f"[{'] ['.join(block.evidence_ids[:3])}]"
-            for block in result.blocks
+    if result.figures:
+        # The terminal lists figures; --artifact saves their pictures.
+        text += "\n\nFigures:\n" + "\n".join(
+            f"- {figure.id}: {figure.title} ({figure.kind.replace('_', ' ')} chart) "
+            f"[{figure.evidence_ids[0]}]"
+            for figure in result.figures
+        )
+    if result.artifacts:
+        text += "\n\nArtifacts:\n" + "\n".join(
+            f"- {item.id}: {item.title}" for item in result.artifacts
         )
     if result.limitations:
         text += "\n\n" + "\n".join(f"Note: {item}" for item in result.limitations)
@@ -77,7 +83,7 @@ def ask(
     | None = None,
     format: Literal["markdown", "plain"] = "markdown",
     json: bool = False,
-    report: bool = False,
+    artifact: bool = False,
     debug: bool = False,
 ) -> None:
     """Run a request with optional files and piped UTF-8 stdin.
@@ -90,7 +96,8 @@ def ask(
         reasoning_effort: Optional reasoning effort supported by the selected model.
         format: Answer format, Markdown by default.
         json: Print one JSON object with the answer, references, notes, and usage.
-        report: Also save a Markdown report in the reports directory.
+        artifact: Also save the result as an artifact: a Quarto document with
+            its references and figures, in a new folder of the artifacts directory.
         debug: On a model failure, also print the raw provider response to stderr.
     """
     overrides = {}
@@ -105,7 +112,9 @@ def ask(
         raise InputError("Provide a nonempty prompt.") from None
     stdin = None if sys.stdin.isatty() else sys.stdin.buffer
     try:
-        result = SourceSift(settings).run_sync(request, files=file or (), stdin=stdin)
+        result = SourceSift(settings).run_sync(
+            request, files=file or (), stdin=stdin, artifacts=artifact
+        )
     except ModelError as exc:
         if debug and exc.detail:
             print(f"ssift: provider detail: {exc.detail}", file=sys.stderr)
@@ -115,10 +124,13 @@ def ask(
         if json
         else render_result(result, format)
     )
-    if report:
-        path = save_report(request.prompt, result, settings.reports.directory)
-        # stderr keeps the path out of piped answers.
-        print(f"ssift: report saved to {path}", file=sys.stderr)
+    if artifact:
+        # A document the model wrote is saved as written; otherwise the answer is kept.
+        written = result.artifacts or (artifact_from_answer(request.prompt, result),)
+        folder = new_artifact_folder(settings.artifacts.directory, written[0].title)
+        for path in save_artifacts(folder, written, result.references, result.figures):
+            # stderr keeps the path out of piped answers.
+            print(f"ssift: artifact saved to {path}", file=sys.stderr)
     sys.stdout.flush()
 
 

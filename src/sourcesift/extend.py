@@ -1,7 +1,7 @@
-"""Define typed data sources and widgets in Python.
+"""Define typed data sources in Python.
 
-This interface is new and may change. Built-in sources and widgets are defined
-with the same decorators. Extensions are trusted Python: unlike the model, they
+This interface is new and may change. Built-in data sources are defined with
+the same decorator. Extensions are trusted Python: unlike the model, they
 can do anything the process can.
 """
 
@@ -12,8 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from sourcesift.contract import Contract
-from sourcesift.data import Table, View
+from sourcesift.data import Table
 from sourcesift.errors import ConfigurationError
 from sourcesift.retrieval.http import Page
 from sourcesift.retrieval.urls import hostname
@@ -51,7 +50,6 @@ class FetchContext:
 
 
 Fetch = Callable[[Any, FetchContext], Awaitable[SourceResult]]
-Render = Callable[[Table, Any], View]
 
 
 @dataclass(frozen=True)
@@ -80,24 +78,6 @@ class DataSource:
             return await get(url)
 
         return bounded_get
-
-
-@dataclass(frozen=True)
-class Widget:
-    """A typed function from a table and options to a view.
-
-    ``render`` raises ``ValueError`` with a message for the model when the
-    options do not fit the table, such as a column that is not numeric.
-    """
-
-    id: str
-    description: str
-    options: type[BaseModel]
-    render: Render
-
-
-class NoOptions(Contract):
-    """Options for a widget that has none."""
 
 
 def source(
@@ -131,32 +111,12 @@ def source(
     return lambda fetch: DataSource(entry, params, fetch, api_hosts)
 
 
-def widget(
-    *,
-    id: str,
-    description: str,
-    options: type[BaseModel] = NoOptions,
-) -> Callable[[Render], Widget]:
-    """Turn ``def render(table, options) -> View`` into a widget the model can choose.
-
-    The description and the option fields' descriptions are what the model sees.
-    """
-    return lambda render: Widget(id, description, options, render)
-
-
 class Toolkit:
-    """The data sources and widgets available to an application."""
+    """The data sources available to an application."""
 
-    def __init__(
-        self, sources: Iterable[DataSource] = (), widgets: Iterable[Widget] = ()
-    ) -> None:
+    def __init__(self, sources: Iterable[DataSource] = ()) -> None:
         self.sources: dict[str, DataSource] = {}
-        self.widgets: dict[str, Widget] = {}
         for item in sources:
             if item.source.id in self.sources:
                 raise ConfigurationError("Data source IDs must be unique.")
             self.sources[item.source.id] = item
-        for item in widgets:
-            if item.id in self.widgets:
-                raise ConfigurationError("Widget IDs must be unique.")
-            self.widgets[item.id] = item

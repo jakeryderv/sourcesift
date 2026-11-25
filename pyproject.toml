@@ -22,6 +22,7 @@ dependencies = [
     "feedparser>=6,<7",
     "httpx>=0.28,<1",
     "markdown-it-py>=4,<5",
+    "matplotlib>=3.10,<4",
     "openai>=3.31,<4",
     "platformdirs>=4.13.0,<5",
     "pydantic>=2.14.1,<3",

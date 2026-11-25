@@ -80,7 +80,7 @@ def test_sync_async_context_and_usage(settings, install_model, tmp_path):
             "research",
             "query_source",
             "read_article",
-            "show",
+            "make_figure",
         }
 
 
@@ -299,7 +299,7 @@ def test_openrouter_transport_contract(monkeypatch, status):
     payload = json.loads(requests[0].content)
     assert payload["model"] == "openai/gpt-6.1-sol"
     assert payload["reasoning"] == {"effort": "medium", "exclude": True}
-    assert payload["max_tokens"] == 2048
+    assert payload["max_tokens"] == 8192
     assert all(c.is_closed() for c in clients)
 
 

@@ -76,11 +76,17 @@ def describe_call(
         except RetrievalError:
             title = "Reading an article"
         lines.append(_short(url))
-    elif tool == "show":
-        title = f"Drawing a {_short(arguments.get('widget', 'visual'), 40)}"
-        options = arguments.get("options")
-        if isinstance(options, dict):
-            lines += [f"{_short(k, 40)}: {_short(v, 80)}" for k, v in options.items()]
+    elif tool == "make_figure":
+        kind = _short(arguments.get("kind", ""), 20).replace("_", " ")
+        title = f"Drawing a {kind} chart".replace("  ", " ")
+        for key in ("x", "y", "series", "table"):
+            if arguments.get(key):
+                lines.append(f"{key}: {_short(arguments[key], 80)}")
+    elif tool == "write_artifact":
+        revising = bool(str(arguments.get("artifact_id", "")).strip())
+        title = "Revising an artifact" if revising else "Writing an artifact"
+        if arguments.get("title"):
+            lines.append(_short(arguments["title"], 120))
     else:
         title = f"Running {_short(tool, 40)}"
     return title, tuple(lines)
@@ -98,7 +104,7 @@ def describe_result(
         return "failed", "No result", (_short(content),)
     if content.get("error"):
         return "failed", _short(content["error"]), ()
-    if tool == "show":
+    if tool in {"make_figure", "write_artifact"}:
         return "done", _short(content.get("title", "")), ()
     lines = []
     fresh = 0

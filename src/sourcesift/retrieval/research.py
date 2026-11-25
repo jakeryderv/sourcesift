@@ -9,11 +9,19 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
+from sourcesift.artifacts import (
+    CITATION,
+    FIGURE,
+    MAX_ARTIFACTS,
+    artifact_problem,
+    citations_in,
+)
 from sourcesift.builtin import builtin_toolkit
 from sourcesift.core.config import Settings
-from sourcesift.data import VIEWS, Block, Table
+from sourcesift.data import Figure, FigureKind, Table
 from sourcesift.extend import FetchContext, Toolkit
-from sourcesift.models import Evidence, Reference, ResearchWindow
+from sourcesift.figures import check_figure
+from sourcesift.models import Artifact, Evidence, Reference, ResearchWindow
 from sourcesift.retrieval.http import Fetcher, Page, PageCache
 from sourcesift.retrieval.parsing import (
     ParsedItem,
@@ -25,7 +33,7 @@ from sourcesift.retrieval.urls import RetrievalError, hostname, normalize_url
 from sourcesift.sources import Source, SourceRegistry
 
 WindowName = Literal["recent", "today", "this_week", "any"]
-CITATION = re.compile(r"\[S(\d+)\]")
+MAX_CONVERSATION_FIGURES = 48
 
 
 def make_window(label: WindowName, settings: Settings, now: datetime) -> ResearchWindow:
@@ -76,13 +84,20 @@ class Research:
         cache: PageCache | None = None,
         toolkit: Toolkit | None = None,
         datasets: dict[str, Dataset] | None = None,
+        figures: dict[str, Figure] | None = None,
+        artifacts: dict[str, Artifact] | None = None,
     ) -> None:
         self.settings = settings
         self.registry = registry
         self.toolkit = toolkit if toolkit is not None else builtin_toolkit()
         # Evidence ID -> the data returned with it, including earlier turns'.
         self.datasets = dict(datasets or {})
-        self.blocks: list[Block] = []
+        # Figure ID -> figure, including earlier turns'; ``made`` is this run's.
+        self.figures = dict(figures or {})
+        self.made: list[str] = []
+        # Artifact ID -> artifact, including earlier turns'; ``written`` is this run's.
+        self.artifacts = dict(artifacts or {})
+        self.written: list[str] = []
         self.fetcher = fetcher
         self.cache = cache
         self.now = now or datetime.now(UTC)
@@ -144,15 +159,15 @@ class Research:
             ],
             "limitations": self.limitations,
         }
-        showable = [
+        tables = [
             {
                 "evidence_id": data.evidence_ids[0],
                 "tables": [table.describe() for table in data.tables],
             }
             for data in {id(d): d for d in self.datasets.values()}.values()
         ]
-        if showable:
-            reply["showable"] = showable
+        if tables:
+            reply["chartable"] = tables
         return reply
 
     async def research(
@@ -235,7 +250,7 @@ class Research:
         matching the source's params schema in the catalog. Use window as for
         research; a window or named-publication constraint already set in this
         request stays in force. Returned records are evidence to cite like any
-        other, and "showable" lists data that show can draw.
+        other, and "chartable" lists the tables make_figure can draw.
         """
         self.attempted = True
         if self.window is None:
@@ -294,35 +309,36 @@ class Research:
             self.note(f"{source.name}: {exc}")
         return self._reply()
 
-    async def show(
+    async def make_figure(
         self,
         evidence_id: str,
-        widget: str,
-        options: dict[str, Any] | None = None,
+        kind: FigureKind,
+        x: str,
+        y: list[str],
         table: str = "",
+        series: str = "",
+        title: str = "",
+        log_scale: bool = False,
     ) -> dict[str, object]:
-        """Show a table returned by query_source as a visual beside the answer.
+        """Draw a chart from a table returned by query_source.
 
-        Pass an evidence_id listed under "showable", a widget from the payload's
-        widgets, and options matching that widget's schema; options name the
-        table's columns exactly as listed. When the evidence has several tables,
-        pass the table's name. The application draws the visual from the
-        retrieved rows: values cannot be passed in. Cite the same evidence in the
-        answer or the visual is omitted.
+        Pass an evidence_id listed under "chartable" and name columns exactly as
+        listed there. kind is line or area (numbers over a time or number
+        column), bar or stacked_bar (numbers across categories), scatter (how two
+        numbers relate), or donut (parts of a whole, a dozen rows at most). x is
+        the horizontal axis column (for donut, the column naming each part); y
+        lists one to eight numeric columns, one series each. series optionally
+        names a text column that splits a single y column into one series per
+        value. When the evidence has several tables, pass the table's name. The
+        application draws the chart from the retrieved rows: values cannot be
+        passed in. The reply gives the figure's ID and the Markdown that places it.
         """
         key = evidence_id.strip().strip("[]")
         dataset = self.datasets.get(key)
         if dataset is None:
             return {
-                "error": "No data is attached to that evidence. Only evidence listed "
-                "under showable, from query_source in this conversation, can be shown."
-            }
-        chosen = self.toolkit.widgets.get(widget.strip())
-        if chosen is None:
-            return {
-                "error": "Unknown widget. Widgets: "
-                + ", ".join(self.toolkit.widgets)
-                + "."
+                "error": "No table is attached to that evidence. Only evidence listed "
+                "under chartable, from query_source in this conversation, can be drawn."
             }
         wanted = " ".join(table.split()).casefold()
         candidates = [
@@ -331,51 +347,117 @@ class Research:
         if not candidates:
             names = "; ".join(t.name for t in dataset.tables)
             return {"error": f"No table has that name. Tables: {names}."}
-        try:
-            parsed = chosen.options.model_validate(options or {})
-        except ValidationError as exc:
-            return {"error": f"Invalid options for {chosen.id}: {_problems(exc)}"}
-        # Without a table name, the first table the options fit is drawn.
-        view = None
-        problem = f"The {chosen.id} widget could not draw this data."
+        number = 1 + max((int(name[1:]) for name in self.figures), default=0)
+        # Without a table name, the first table the columns fit is drawn.
+        figure = None
+        problem = "That chart could not be drawn from this data."
         for candidate in candidates:
             try:
-                view = chosen.render(candidate, parsed)
-                if not isinstance(view, VIEWS):
-                    raise TypeError
-            except ValidationError:
-                view = None
+                figure = Figure(
+                    id=f"F{number}",
+                    title=" ".join(title.split())[:120] or candidate.name,
+                    kind=kind,
+                    x=x,
+                    y=tuple(y),
+                    series=series,
+                    log_scale=log_scale,
+                    source_id=dataset.source_id,
+                    evidence_ids=dataset.evidence_ids,
+                    table=candidate,
+                )
+                check_figure(figure)
+            except ValidationError as exc:
+                figure, problem = None, f"Invalid chart: {_problems(exc)}"
             except ValueError as exc:
-                view, problem = None, " ".join(str(exc).split())[:300] or problem
-            except (ArithmeticError, LookupError, TypeError):
-                view = None
+                figure, problem = None, " ".join(str(exc).split())[:300] or problem
             else:
                 break
-        if view is None:
+        if figure is None:
             return {"error": problem}
-        block = Block(
-            widget=chosen.id,
-            evidence_ids=dataset.evidence_ids,
-            source_id=dataset.source_id,
-            options=parsed.model_dump(mode="json"),
-            table=candidate,
-            view=view,
-        )
-        if block in self.blocks:
-            return {"shown": chosen.id, "title": view.title}
-        if len(self.blocks) >= self.settings.limits.max_blocks:
-            return {"error": "The limit on visuals for one answer was reached."}
-        self.blocks.append(block)
+        recipe = figure.model_dump(exclude={"id"})
+        for existing in self.figures.values():
+            if existing.model_dump(exclude={"id"}) == recipe:
+                return self._placed(existing)
+        if len(self.made) >= self.settings.limits.max_figures:
+            return {"error": "The limit on figures for one answer was reached."}
+        if len(self.figures) >= MAX_CONVERSATION_FIGURES:
+            return {"error": "This conversation has reached its limit on figures."}
+        self.figures[figure.id] = figure
+        self.made.append(figure.id)
+        return self._placed(figure)
+
+    @staticmethod
+    def _placed(figure: Figure) -> dict[str, object]:
         return {
-            "shown": chosen.id,
-            "title": view.title,
-            "cite": f"Cite [{key}] in the answer, or this visual is omitted.",
+            "figure": figure.id,
+            "title": figure.title,
+            "place": f"![{figure.title}]({figure.id})",
+            "cite": f"[{figure.evidence_ids[0]}]",
         }
 
-    def blocks_for(self, answer: str) -> tuple[Block, ...]:
-        """Shown visuals whose evidence the answer cites."""
-        cited = {"S" + value for value in CITATION.findall(answer)}
-        return tuple(b for b in self.blocks if cited.intersection(b.evidence_ids))
+    async def write_artifact(
+        self, title: str, markdown: str, artifact_id: str = ""
+    ) -> dict[str, object]:
+        """Write or revise an artifact: a document the user keeps and can export.
+
+        markdown is the whole document: headings and prose in plain Markdown,
+        [S1] citations for every external claim, and figures placed on their own
+        line as ![Title](F1). Do not write a title heading, a YAML header, a
+        reference list, code that runs, HTML, or images other than figures; the
+        application adds the title, date, and references. To revise, pass the
+        artifact_id of an existing artifact and the full new text.
+        """
+        key = artifact_id.strip().strip("[]")
+        existing = self.artifacts.get(key) if key else None
+        if key and existing is None:
+            known = ", ".join(self.artifacts) or "none"
+            return {"error": f"There is no artifact {key}. Artifacts: {known}."}
+        problem = artifact_problem(
+            title,
+            markdown,
+            evidence_ids=(item.id for item in self.all_evidence.values()),
+            figure_ids=self.figures,
+            max_chars=self.settings.limits.max_artifact_chars,
+        )
+        if problem:
+            return {"error": problem}
+        if existing is None and len(self.artifacts) >= MAX_ARTIFACTS:
+            return {"error": "This conversation has reached its limit on artifacts."}
+        number = 1 + max((int(name[1:]) for name in self.artifacts), default=0)
+        artifact = Artifact(
+            id=existing.id if existing else f"A{number}",
+            title=" ".join(title.split())[:120],
+            markdown=markdown.strip(),
+            version=existing.version + 1 if existing else 1,
+            updated_at=self.now,
+        )
+        self.artifacts[artifact.id] = artifact
+        if artifact.id not in self.written:
+            self.written.append(artifact.id)
+        return {
+            "artifact": artifact.id,
+            "title": artifact.title,
+            "version": artifact.version,
+        }
+
+    def written_text(self) -> str:
+        """The text of every artifact written or revised in this run."""
+        return "\n".join(self.artifacts[key].markdown for key in self.written)
+
+    def cited(self, answer: str) -> set[str]:
+        """Evidence the answer or this run's artifacts cite, in text or by a figure."""
+        text = answer + "\n" + self.written_text()
+        return citations_in(text) | {
+            figure.evidence_ids[0] for figure in self.figures_in(text)
+        }
+
+    def figures_in(self, text: str) -> tuple[Figure, ...]:
+        """Known figures the text places, in first-use order."""
+        ids = dict.fromkeys(FIGURE.findall(text))
+        return tuple(self.figures[key] for key in ids if key in self.figures)
+
+    def unknown_figures(self, text: str) -> set[str]:
+        return set(FIGURE.findall(text)) - set(self.figures)
 
     async def read_article(self, url: str) -> dict[str, object]:
         """Read a returned article link for detail, within the original constraints.
@@ -595,9 +677,14 @@ class Research:
         return True
 
     def references(self, answer: str) -> tuple[Reference, ...]:
-        """Return cited references in first-citation order, never fabricated URLs."""
+        """Return cited references in first-citation order, never fabricated URLs.
+
+        A placed figure counts as citing the evidence its table came with.
+        """
         by_id = {item.id: item for item in self.all_evidence.values()}
         ids = dict.fromkeys("S" + value for value in CITATION.findall(answer))
+        for figure in self.figures_in(answer):
+            ids.setdefault(figure.evidence_ids[0])
         return tuple(
             Reference.model_validate(by_id[key].model_dump(exclude={"text"}))
             for key in ids

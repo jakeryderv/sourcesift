@@ -1,6 +1,5 @@
-"""The local web server: access rules, streamed turns, sources, reports, radar."""
+"""The local web server: access rules, streamed turns, sources, and artifacts."""
 
-import base64
 import json
 import sys
 from contextlib import asynccontextmanager
@@ -11,7 +10,7 @@ from pydantic_ai.messages import ModelResponse
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from starlette.testclient import TestClient
 
-from sourcesift import AgentSettings, ReportsSettings, Settings, SourceSift, cli
+from sourcesift import AgentSettings, ArtifactsSettings, Settings, SourceSift, cli
 from sourcesift.agents import runtime
 from sourcesift.retrieval.http import Fetcher, Page
 from sourcesift.web.server import create_app, render_markdown
@@ -39,10 +38,14 @@ def served(monkeypatch, tmp_path):
                 0: DeltaToolCall(name="query_source", json_args=args, tool_call_id="c1")
             }
         elif calls == 1:
-            args = json.dumps({"evidence_id": "S1", "widget": "table"})
-            yield {0: DeltaToolCall(name="show", json_args=args, tool_call_id="c2")}
+            args = json.dumps(
+                {"evidence_id": "S1", "kind": "bar", "x": "Story", "y": ["Points"]}
+            )
+            yield {
+                0: DeltaToolCall(name="make_figure", json_args=args, tool_call_id="c2")
+            }
         else:
-            yield "**First** leads. [S1]\n\n"
+            yield "**First** leads. [S1]\n\n![Points](F1)\n\n"
             yield "<script>x</script> ![i](http://t/p.png)"
 
     @asynccontextmanager
@@ -59,7 +62,7 @@ def served(monkeypatch, tmp_path):
     core = SourceSift(
         Settings(
             agent=AgentSettings(model="example/test", api_key="test-key"),
-            reports=ReportsSettings(directory=str(tmp_path)),
+            artifacts=ArtifactsSettings(directory=str(tmp_path)),
         )
     )
     app = create_app(core, token=TOKEN, hosts=("testserver",))
@@ -77,7 +80,7 @@ def test_only_this_launchs_page_can_use_the_api(served):
     assert page.status_code == 200 and "<title>SourceSift</title>" in page.text
     assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
     assert page.headers["x-content-type-options"] == "nosniff"
-    for path in ("/app.js", "/figure.js", "/app.css"):
+    for path in ("/app.js", "/dom.js", "/app.css"):
         assert client.get(path).status_code == 200
     # Another site's name resolving to this machine is refused, even for the page.
     assert client.get("/", headers={"Host": "evil.example"}).status_code == 403
@@ -94,7 +97,7 @@ def test_only_this_launchs_page_can_use_the_api(served):
     assert client.get("/api/sessions/unknown", headers=AUTH).status_code == 400
 
 
-def test_turn_streams_progress_then_a_result_with_visuals(served):
+def test_turn_streams_progress_then_a_result_with_a_figure(served):
     client, fetched = served
     session = client.post("/api/sessions", json={}, headers=AUTH).json()
     assert session["model"] == "example/test" and session["turns"] == []
@@ -104,7 +107,7 @@ def test_turn_streams_progress_then_a_result_with_visuals(served):
     )
     base = f"/api/sessions/{session['id']}"
 
-    assert client.post(f"{base}/report", json={}, headers=AUTH).status_code == 400
+    assert client.post(f"{base}/artifacts", json={}, headers=AUTH).status_code == 400
     assert (
         client.post(f"{base}/turns", json={"prompt": 3}, headers=AUTH).status_code
         == 400
@@ -119,56 +122,50 @@ def test_turn_streams_progress_then_a_result_with_visuals(served):
     assert [(s["tool"], s["state"]) for s in steps] == [
         ("query_source", "running"),
         ("query_source", "done"),
-        ("show", "running"),
-        ("show", "done"),
+        ("make_figure", "running"),
+        ("make_figure", "done"),
     ]
     assert steps[0]["title"] == "Getting data from Hacker News"
     assert steps[1]["summary"] == "2 new items" and "[S1] First" in steps[1]["lines"]
+    assert steps[2]["title"] == "Drawing a bar chart"
     assert steps[3]["summary"] == "Hacker News front page"
     # Drafts arrive already rendered, growing as the model writes.
     drafts = [event["html"] for event in stream if event["event"] == "draft"]
     assert "<strong>First</strong>" in drafts[0] and len(drafts[-1]) > len(drafts[0])
     turn = stream[-1]["turn"]
     assert turn["prompt"] == "front page"
-    (block,) = turn["result"]["blocks"]
-    assert block["widget"] == "table" and block["source_id"] == "hacker-news"
-    assert block["table"]["name"] == "Hacker News front page"
-    assert block["view"]["rows"][0][:2] == ["First", 10.0]
-    # Markdown is rendered; raw HTML is escaped and images are not loaded.
+    (figure,) = turn["result"]["figures"]
+    assert figure["id"] == "F1" and figure["source_id"] == "hacker-news"
+    assert figure["table"]["name"] == "Hacker News front page"
+    assert figure["table"]["rows"][0][:2] == ["First", 10.0]
+    # Markdown is rendered; raw HTML is escaped and only the figure is an image.
     html = turn["answer_html"]
     assert "<strong>First</strong>" in html and "<script>" not in html
-    assert "&lt;script&gt;" in html and "<img" not in html
+    assert "&lt;script&gt;" in html and html.count("<img") == 1
+    assert 'data-figure="F1"' in html and 'src="data:image/png;base64,iVBOR' in html
+    assert (
+        "http://t/p.png" not in html and '<span class="missing-figure">i</span>' in html
+    )
+    # While the answer is being written the figure is not yet part of the page.
+    assert "<img" not in drafts[-1]
     assert len(fetched) == 1
 
-    # The conversation survives a page reload and can be saved as a report.
+    # The conversation survives a page reload, and an answer can be kept.
     again = client.get(base, headers=AUTH).json()
     assert again["id"] == session["id"] and len(again["turns"]) == 1
     assert [s["state"] for s in turn["result"]["steps"]] == ["done", "done"]
     assert (
-        client.post(f"{base}/report", json={"turn": 5}, headers=AUTH).status_code == 400
+        client.post(f"{base}/artifacts", json={"turn": 5}, headers=AUTH).status_code
+        == 400
     )
-    saved = client.post(f"{base}/report", json={"turn": 0}, headers=AUTH).json()
-    text = Path(saved["path"]).read_text(encoding="utf-8")
-    # The table the page showed is written into the report.
-    assert "front page" in text and "### Hacker News front page" in text
-    assert "| First | 10 | 2 |" in text and saved["images"] == []
-
-    # A picture is kept only for a chart or map; this answer's visual is a table.
-    picture = (
-        "data:image/png;base64,"
-        + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 1_500_000).decode()
-    )
-    sent = client.post(
-        f"{base}/report", json={"turn": 0, "images": {"0": picture}}, headers=AUTH
-    )
-    assert sent.status_code == 200 and sent.json()["images"] == []
-    for images in ({"0": "data:text/html;base64,PGI+"}, {"x": picture}, ["a"], "a"):
-        bad = client.post(
-            f"{base}/report", json={"turn": 0, "images": images}, headers=AUTH
-        )
-        assert bad.status_code == 400 and "images" in bad.json()["error"]
-    # Only saving a report may send that much.
-    large = client.post(f"{base}/turns", json={"prompt": picture}, headers=AUTH)
+    saved = client.post(f"{base}/artifacts", json={"turn": 0}, headers=AUTH).json()
+    assert saved["id"] == "A1" and saved["title"] == "front page"
+    path = Path(saved["path"])
+    text = path.read_text(encoding="utf-8")
+    assert "**First** leads. [@S1]" in text and "![Points](figures/F1.png)" in text
+    assert (path.parent / "figures" / "F1.png").is_file()
+    assert (path.parent / "references.json").is_file()
+    large = client.post(f"{base}/turns", content=b"x" * 1_100_000, headers=AUTH)
     assert large.status_code == 403
 
 
@@ -191,49 +188,18 @@ def test_sources_can_be_limited_for_one_conversation(served):
     )
     assert stream[-1]["event"] in {"result", "error"}
     if stream[-1]["event"] == "result":
-        assert stream[-1]["turn"]["result"]["blocks"] == []
+        assert stream[-1]["turn"]["result"]["figures"] == []
     other = client.post("/api/sessions", json={}, headers=AUTH).json()
     assert all(source["enabled"] for source in other["sources"])
 
 
-def test_radar_address_is_looked_up_by_the_server_and_cached(monkeypatch, served):
+def test_the_page_loads_nothing_from_other_hosts(served):
     client, _ = served
-    seen = []
-    frames = {"radar": {"past": [{"path": "/v2/radar/old"}, {"path": "/v2/radar/ab1"}]}}
-
-    async def get(self, url, *, robots=True):
-        seen.append(url)
-        assert robots is False
-        return Page(url, url, json.dumps(frames).encode(), "application/json")
-
-    monkeypatch.setattr(Fetcher, "get", get)
-    assert client.get("/api/radar").status_code == 403
-    # The newest frame, as a tile address the map fills in itself.
-    expected = "https://tilecache.rainviewer.com/v2/radar/ab1/256/{z}/{x}/{y}/2/1_1.png"
-    assert client.get("/api/radar", headers=AUTH).json() == {"tiles": expected}
-    assert client.get("/api/radar", headers=AUTH).json() == {"tiles": expected}
-    assert seen == ["https://api.rainviewer.com/public/weather-maps.json"]
-
-    # The page may load map and radar tiles from the named hosts and nowhere else.
     policy = client.get("/").headers["content-security-policy"]
-    assert "script-src 'self';" in policy and "worker-src blob:" in policy
-    assert "https://tilecache.rainviewer.com" in policy
-    assert "https://*.basemaps.cartocdn.com" in policy
-    for path in ("/figure.js", "/dom.js", "/vendor/plotly.min.js"):
-        assert client.get(path).status_code == 200
-    assert client.get("/map.js").status_code == 404
-
-
-def test_radar_failure_is_reported_not_guessed(monkeypatch, served):
-    client, _ = served
-
-    async def get(self, url, *, robots=True):
-        body = {"radar": {"past": [{"path": "https://evil.test/x"}]}}
-        return Page(url, url, json.dumps(body).encode(), "application/json")
-
-    monkeypatch.setattr(Fetcher, "get", get)
-    reply = client.get("/api/radar", headers=AUTH)
-    assert reply.status_code == 400 and "unavailable" in reply.json()["error"]
+    assert "script-src 'self';" in policy and "connect-src 'self';" in policy
+    assert "img-src 'self' data: blob:;" in policy and "https://" not in policy
+    assert client.get("/api/radar", headers=AUTH).status_code == 404
+    assert client.get("/vendor/plotly.min.js").status_code == 404
 
 
 def test_markdown_tables_render_and_links_keep_safe_schemes():

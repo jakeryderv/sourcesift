@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field, field_validator
 
 from sourcesift.contract import Contract
-from sourcesift.data import Block
+from sourcesift.data import Figure
 
 
 class ContextDocument(Contract):
@@ -87,6 +87,23 @@ class Evidence(Reference):
     text: str = Field(repr=False)
 
 
+class Artifact(Contract):
+    """A document the agent wrote, or an answer the user kept as one.
+
+    ``markdown`` cites evidence as ``[S1]`` and places figures as
+    ``![Title](F1)``. ``notes`` are the application's coverage notes for the turn
+    that wrote it. ``id`` (A1, A2, ...) is stable within a conversation and
+    ``version`` counts revisions.
+    """
+
+    id: str = Field(pattern=r"^A[1-9]\d*$")
+    title: str = Field(min_length=1, max_length=120)
+    markdown: str = Field(min_length=1, repr=False)
+    notes: tuple[str, ...] = ()
+    version: int = Field(default=1, ge=1)
+    updated_at: datetime
+
+
 class ResearchWindow(Contract):
     """Inclusive window start and retrieval-time end, with the configured zone."""
 
@@ -99,8 +116,10 @@ class ResearchWindow(Contract):
 class Result(Contract):
     """Answer, explicit capability limitations, and reported usage.
 
-    ``blocks`` are visuals the model chose to show, drawn from retrieved data and
-    kept only when the answer cites their evidence.
+    ``figures`` are the charts the answer or its artifacts place, in order. Each
+    holds its recipe and the retrieved rows; ``sourcesift.render_png`` draws its
+    picture. ``artifacts`` are documents written or revised in this turn.
+    ``references`` covers the answer, those artifacts, and those figures.
     """
 
     answer: str = Field(repr=False)
@@ -108,7 +127,8 @@ class Result(Contract):
     usage: Usage = Field(default_factory=Usage)
     model: str
     references: tuple[Reference, ...] = ()
-    blocks: tuple[Block, ...] = ()
+    figures: tuple[Figure, ...] = ()
+    artifacts: tuple[Artifact, ...] = ()
     steps: tuple[Step, ...] = ()
     selected_sources: tuple[str, ...] = ()
     window: ResearchWindow | None = None

@@ -42,8 +42,8 @@ class ContextSettings(Contract):
     instructions_file: Path | None = None
 
 
-class ReportsSettings(Contract):
-    """Where explicitly requested reports are saved; the platform default if unset."""
+class ArtifactsSettings(Contract):
+    """Where artifacts are saved on request; the platform default if unset."""
 
     directory: Path | None = None
 
@@ -78,14 +78,15 @@ class Limits(Contract):
 
     max_input_bytes: int = Field(default=131072, ge=1, le=10485760)
     max_context_files: int = Field(default=16, ge=0, le=256)
-    timeout_seconds: float = Field(default=60, gt=0, le=600, allow_inf_nan=False)
-    max_output_tokens: int = Field(default=2048, ge=1, le=32768)
+    timeout_seconds: float = Field(default=120, gt=0, le=600, allow_inf_nan=False)
+    max_output_tokens: int = Field(default=8192, ge=1, le=32768)
     max_model_requests: int = Field(default=6, ge=1, le=20)
     max_tool_calls: int = Field(default=8, ge=0, le=30)
     max_sources: int = Field(default=3, ge=1, le=16)
     max_items: int = Field(default=18, ge=1, le=100)
     max_items_per_source: int = Field(default=6, ge=1, le=25)
-    max_blocks: int = Field(default=4, ge=0, le=12)
+    max_figures: int = Field(default=4, ge=0, le=12)
+    max_artifact_chars: int = Field(default=40000, ge=1000, le=200000)
     max_articles: int = Field(default=6, ge=0, le=30)
     max_http_requests: int = Field(default=24, ge=1, le=100)
     http_timeout_seconds: float = Field(default=10, gt=0, le=60, allow_inf_nan=False)
@@ -103,7 +104,7 @@ class Settings(Contract):
     agent: AgentSettings = Field(default_factory=AgentSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
     limits: Limits = Field(default_factory=Limits)
-    reports: ReportsSettings = Field(default_factory=ReportsSettings)
+    artifacts: ArtifactsSettings = Field(default_factory=ArtifactsSettings)
     sessions: SessionsSettings = Field(default_factory=SessionsSettings)
     sources: SourcesSettings = Field(default_factory=SourcesSettings)
 
@@ -187,7 +188,7 @@ def load_settings(
             else item
             for item in context["files"]
         ]
-    for section in ("reports", "sessions"):
+    for section in ("artifacts", "sessions"):
         table = data.get(section)
         if isinstance(table, dict) and isinstance(table.get("directory"), str):
             table["directory"] = str(
