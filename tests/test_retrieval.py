@@ -591,8 +591,13 @@ async def test_article_upgrade_and_redirect_provenance():
     r = research(
         {SOURCE.feeds[0]: page(feed(entry())), "https://example.com/story": article}
     )
-    await r.research(["fixture"], [], ["Fixture"])
-    await r.read_article("https://example.com/story")
+    first = await r.research(["fixture"], [], ["Fixture"])
+    assert [item["kind"] for item in first["evidence"]] == ["feed_summary"]
+    second = await r.read_article("https://example.com/story")
+    # A reply repeats evidence only when it changed; the rest is named by ID.
+    assert [item["kind"] for item in second["evidence"]] == ["article"]
+    again = await r.read_article("https://example.com/story")
+    assert again["evidence"] == [] and again["unchanged_evidence_ids"] == ["S1"]
     assert len(r.evidence) == 1
     ref = r.references("Supported [S1]")[0]
     assert (

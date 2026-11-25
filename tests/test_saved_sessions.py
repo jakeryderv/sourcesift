@@ -110,6 +110,12 @@ async def test_save_and_continue_keep_history_evidence_and_context(
     assert payload["retained_evidence"][0]["text"] == "The council approved a library."
     assert "Check news" in str(messages)
     assert second.references[0].id == "S1" and second.http_requests == 0
+    # Only the latest request carries the catalog and the evidence text: the
+    # earlier turn keeps its task and which evidence its tool reply found.
+    earlier = str(messages[:-1])
+    assert "earlier_turn" in earlier and '"catalog":' not in earlier
+    assert "The council approved" not in earlier and "Library story" in earlier
+    assert "feeds.npr.org" not in json.dumps(payload["catalog"])
     # The continued conversation keeps writing to the same folder.
     assert resumed.saved_path == path
     assert len(list((tmp_path / "sessions").iterdir())) == 1

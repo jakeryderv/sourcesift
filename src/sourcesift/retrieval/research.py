@@ -131,6 +131,8 @@ class Research:
         self.articles = 0
         self._read: set[str] = set()
         self._next_id = next_id
+        # What tool replies have already shown the model, by evidence key.
+        self._sent: dict[str, Evidence] = {}
         self._fingerprints: dict[str, bytes] = {}
 
     @property
@@ -163,13 +165,27 @@ class Research:
         return self.limitations_for(tuple(self.evidence.values()))
 
     def _reply(self) -> dict[str, object]:
+        """What a tool call found: evidence that is new or changed since the last reply.
+
+        Evidence the model has already been sent is named by ID only, so a run
+        that reads several articles does not pay for the same text each time.
+        """
+        fresh = [
+            item for key, item in self.evidence.items() if self._sent.get(key) != item
+        ]
+        earlier = [
+            item.id
+            for key, item in self.evidence.items()
+            if self._sent.get(key) == item
+        ]
+        self._sent = dict(self.evidence)
         reply: dict[str, object] = {
             "window": self.window.model_dump(mode="json") if self.window else None,
-            "evidence": [
-                item.model_dump(mode="json") for item in self.evidence.values()
-            ],
+            "evidence": [item.model_dump(mode="json") for item in fresh],
             "limitations": self.limitations,
         }
+        if earlier:
+            reply["unchanged_evidence_ids"] = earlier
         tables = [
             {
                 "evidence_id": data.evidence_ids[0],
