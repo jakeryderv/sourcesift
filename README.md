@@ -9,9 +9,9 @@ selection, RSS/Atom retrieval, feed discovery, and bounded article extraction.
 The web app keeps saved conversations and shows artifacts: documents the agent
 writes, with citations and charts, that export through [Quarto](https://quarto.org)
 when it is installed.
-The built-in catalog of 32 sources covers US national and world news, technology,
+The built-in catalog of 33 sources covers US national and world news, technology,
 AI, science, health, research preprints, business, marketing, finance, and US policy and government,
-including live data from Hacker News, the US Treasury, and a worldwide weather forecast. Sources and dates are explicit; missing evidence
+including live data from Hacker News, the US Treasury, the Bureau of Labor Statistics, and a worldwide weather forecast. Sources and dates are explicit; missing evidence
 and access failures are disclosed. The SDK is an early API and may evolve before 1.0.
 
 ## Project Documentation
