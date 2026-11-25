@@ -259,8 +259,16 @@ async def test_model_writes_and_revises_an_artifact(monkeypatch, tmp_path):
     ]
     assert "Short [@S1]." in paths[0].read_text(encoding="utf-8")
     assert (tmp_path / "out" / "references.json").is_file()
-    (default,) = session.save_artifacts()[:1]
-    assert default.parent.parent == tmp_path / "artifacts"
+    # A saved conversation keeps its artifacts as files in its own folder.
+    assert session.save_artifacts()[0].parent == session.artifacts_path
+    assert session.artifacts_path is not None
+    assert sorted(p.name for p in session.artifacts_path.glob("*.qmd")) == [
+        "A1-debt-brief.qmd",
+        "A2-write-a-report-on-the-national-debt.qmd",
+    ]
+    unsaved = configure(monkeypatch, respond, settings).session()
+    unsaved._state.artifacts = dict(session._state.artifacts)
+    assert unsaved.save_artifacts()[0].parent.parent == tmp_path / "artifacts"
 
     # A continued conversation keeps its artifacts and figures.
     resumed = SourceSift(settings).session(resume=True)

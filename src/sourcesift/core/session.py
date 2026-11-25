@@ -18,6 +18,7 @@ from sourcesift.artifacts import (
     artifact_from_answer,
     new_artifact_folder,
     save_artifacts,
+    title_from,
 )
 from sourcesift.core.config import ContextSettings, Settings
 from sourcesift.core.context import prepare_request
@@ -45,8 +46,9 @@ class Session:
     Only one turn may run at a time; cancel its asyncio task to interrupt it.
 
     A conversation stays in memory unless created with ``save=True``; it is then
-    written to its own file after each completed turn. ``resume=True`` continues
-    the most recently saved conversation and keeps saving to that file.
+    written to its own folder after each completed turn, along with its
+    artifacts as files. ``resume=True`` continues the most recently saved
+    conversation, ``resume="<id>"`` a particular one, and both keep saving to it.
     """
 
     def __init__(
@@ -57,7 +59,7 @@ class Session:
         toolkit: Toolkit | None = None,
         files: Sequence[str | Path] = (),
         save: bool = False,
-        resume: bool = False,
+        resume: bool | str = False,
     ) -> None:
         if resume and files:
             raise InputError(
@@ -72,7 +74,9 @@ class Session:
         self._store = (
             SessionStore(settings.sessions.directory) if save or resume else None
         )
-        self._path: Path | None = None
+        self._id: str | None = None
+        self._saved = False
+        self._title = ""
         # Why the latest completed turn could not be saved, if it could not.
         self.save_error: str | None = None
         self._files = tuple(Path(path).expanduser().resolve() for path in files)
@@ -83,7 +87,7 @@ class Session:
         self._cache = PageCache(settings.limits.feed_cache_seconds)
         self.reset()
         if resume:
-            self._resume()
+            self._resume(None if resume is True else resume)
 
     @property
     def busy(self) -> bool:
@@ -146,32 +150,65 @@ class Session:
     def save_artifacts(self, directory: str | Path | None = None) -> list[Path]:
         """Write every artifact, with its references and figures, into a folder.
 
-        ``directory`` defaults to a new folder in the artifacts directory. See
-        ``sourcesift.save_artifacts`` for the files written.
+        ``directory`` defaults to a saved conversation's own ``artifacts_path``,
+        or to a new folder in the artifacts directory for one kept in memory.
+        See ``sourcesift.save_artifacts`` for the files written.
         """
         if not self._state.artifacts:
             raise InputError("There is no artifact to save yet.")
         folder = (
             Path(directory)
             if directory is not None
-            else new_artifact_folder(
+            else self.artifacts_path
+            or new_artifact_folder(
                 self.settings.artifacts.directory, self.artifacts[0].title
             )
         )
         return save_artifacts(folder, self.artifacts, self.evidence, self.figures)
 
     @property
+    def id(self) -> str | None:
+        """The saved conversation's ID; ``None`` for one kept in memory."""
+        return self._id
+
+    @property
+    def title(self) -> str:
+        """A short name: the first request, unless ``rename`` set another."""
+        return self._title or (title_from(self._turns[0][0]) if self._turns else "")
+
+    def rename(self, title: str) -> None:
+        """Give the conversation a name; a saved one is rewritten with it."""
+        cleaned = " ".join(title.split())[:120]
+        if not cleaned:
+            raise InputError("Give the conversation a name.")
+        if self.busy:
+            raise InputError("Finish or cancel the active turn before renaming.")
+        self._title = cleaned
+        if self._saved:
+            self._save()
+
+    @property
     def saved_path(self) -> Path | None:
         """The file this conversation is saved to, once a turn has been saved."""
-        return self._path if self._path and self._turns else None
+        if self._store is None or self._id is None or not self._saved:
+            return None
+        return self._store.path(self._id)
 
-    def _resume(self) -> None:
+    @property
+    def artifacts_path(self) -> Path | None:
+        """The folder a saved conversation's artifacts are written to."""
+        path = self.saved_path
+        return path.parent / "artifacts" if path else None
+
+    def _resume(self, conversation_id: str | None) -> None:
         assert self._store is not None
-        path = self._store.latest()
-        if path is None:
+        conversation_id = conversation_id or self._store.latest()
+        if conversation_id is None:
             raise InputError("There is no saved conversation to continue.")
         # Generous bound: the state budget plus results and context snapshots.
-        saved = self._store.read(path, 8 * self.settings.limits.max_session_bytes)
+        saved = self._store.read(
+            conversation_id, 8 * self.settings.limits.max_session_bytes
+        )
         try:
             messages = ModelMessagesTypeAdapter.validate_python(saved.messages)
         except ValidationError:
@@ -193,15 +230,18 @@ class Session:
         self._state = state
         self._turns = [(turn.prompt, turn.result) for turn in saved.turns]
         self._context = saved.context
-        self._path = path
+        self._title = saved.title
+        self._id = conversation_id
+        self._saved = True
 
     def _save(self) -> None:
         if self._store is None:
             return
-        path = self._path or self._store.new_path()
+        assert self._id is not None
         self._store.write(
-            path,
+            self._id,
             SavedConversation(
+                title=self.title,
                 model=self.settings.agent.model,
                 messages=ModelMessagesTypeAdapter.dump_python(
                     self._state.messages, mode="json"
@@ -218,7 +258,15 @@ class Session:
                 context=self._context,
             ),
         )
-        self._path = path
+        self._saved = True
+        if self._state.artifacts:
+            # The same documents as files, kept current beside the conversation.
+            save_artifacts(
+                self._store.folder(self._id) / "artifacts",
+                self.artifacts,
+                self.evidence,
+                self.figures,
+            )
 
     @property
     def sources(self) -> tuple[tuple[Source, bool], ...]:
@@ -255,8 +303,10 @@ class Session:
         self._turns.clear()
         self._cache.clear()
         self.registry = self._catalog
-        # A fresh conversation gets its own file; the previous one is kept.
-        self._path = None
+        # A fresh conversation gets its own folder; the previous one is kept.
+        self._id = self._store.new_id() if self._store else None
+        self._saved = False
+        self._title = ""
 
     async def run(
         self,

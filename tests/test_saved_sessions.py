@@ -88,10 +88,13 @@ async def test_save_and_continue_keep_history_evidence_and_context(
     assert session.saved_path is None
     first = await session.run("Check news")
     path = session.saved_path
-    assert path is not None and path.parent == tmp_path / "sessions"
+    assert path is not None and path.name == "conversation.json"
+    assert path.parent == tmp_path / "sessions" / str(session.id)
+    assert session.title == "Check news" and session.artifacts_path is not None
     if os.name == "posix":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
         assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+        assert stat.S_IMODE(path.parent.parent.stat().st_mode) == 0o700
     text = path.read_text(encoding="utf-8")
     assert "private-key" not in text
     assert "I care about libraries." in text and "The council approved" in text
@@ -107,16 +110,44 @@ async def test_save_and_continue_keep_history_evidence_and_context(
     assert payload["retained_evidence"][0]["text"] == "The council approved a library."
     assert "Check news" in str(messages)
     assert second.references[0].id == "S1" and second.http_requests == 0
-    # The continued conversation keeps writing to the same file.
-    assert resumed.saved_path == path and len(list(path.parent.glob("*.json"))) == 1
+    # The continued conversation keeps writing to the same folder.
+    assert resumed.saved_path == path
+    assert len(list((tmp_path / "sessions").iterdir())) == 1
     assert len(json.loads(path.read_text(encoding="utf-8"))["turns"]) == 2
 
-    # A reset starts a separate file and leaves the earlier conversation in place.
+    # A reset starts a separate folder and leaves the earlier conversation in place.
     resumed.reset()
-    assert resumed.saved_path is None
-    await resumed.run("Check news")
+    assert resumed.saved_path is None and resumed.title == ""
+    await resumed.run("Other news")
     assert resumed.saved_path != path and path.exists()
-    assert SourceSift(settings).session(resume=True).saved_path == resumed.saved_path
+    app = SourceSift(settings)
+    assert app.session(resume=True).saved_path == resumed.saved_path
+
+    # Conversations are listed newest first and reopened, renamed, or deleted by ID.
+    newest, oldest = app.conversations()
+    assert (newest.id, newest.title, newest.turns) == (resumed.id, "Other news", 1)
+    assert (oldest.id, oldest.title, oldest.turns) == (session.id, "Check news", 2)
+    reopened = app.session(resume=oldest.id)
+    assert reopened.saved_path == path and len(reopened.turns) == 2
+    reopened.rename("  Library   watch ")
+    with pytest.raises(InputError, match="name"):
+        reopened.rename("   ")
+    assert [c.title for c in app.conversations()] == ["Library watch", "Other news"]
+    assert app.session(resume=oldest.id).title == "Library watch"
+    kept = reopened.keep_answer(0)
+    assert reopened.artifacts_path == path.parent / "artifacts"
+    saved = path.parent / "artifacts" / "A1-check-news.qmd"
+    assert "A library was approved. [@S1]" in saved.read_text(encoding="utf-8")
+    assert reopened.save_artifacts() == [saved]
+    assert app.conversations()[0].artifacts == 1 and kept.id == "A1"
+    app.delete_conversation(oldest.id)
+    assert [c.id for c in app.conversations()] == [newest.id]
+    assert not path.parent.exists()
+    for missing in (oldest.id, "../outside", "20260101-000000-zzzzzzzz"):
+        with pytest.raises(InputError, match="no such saved conversation"):
+            app.delete_conversation(missing)
+        with pytest.raises(InputError, match="no such saved conversation"):
+            app.session(resume=missing)
 
 
 def test_continue_requires_a_readable_saved_conversation(settings, tmp_path):
@@ -125,30 +156,49 @@ def test_continue_requires_a_readable_saved_conversation(settings, tmp_path):
         app.session(resume=True)
     with pytest.raises(InputError, match="keeps its original context"):
         app.session(resume=True, files=[tmp_path / "notes.md"])
-    folder = tmp_path / "sessions"
-    folder.mkdir()
-    for name, content in [
-        ("a.json", "not json"),
-        ("b.json", "[]"),
-        ("c.json", json.dumps({"version": 2})),
-        ("d.json", json.dumps({"version": 1, "messages": [{"kind": "bad"}]})),
-        ("e.json", "x" * (8 * settings.limits.max_session_bytes + 1)),
+    folder = tmp_path / "sessions" / "20260102-030405-0a1b2c3d"
+    folder.mkdir(parents=True)
+    meta = {
+        "id": folder.name,
+        "title": "Old",
+        "updated_at": "2026-01-02T03:04:05Z",
+        "turns": 1,
+    }
+    (folder / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    for content in [
+        "not json",
+        "[]",
+        json.dumps({"version": 1}),
+        json.dumps({"version": 2, "messages": [{"kind": "bad"}]}),
+        "x" * (8 * settings.limits.max_session_bytes + 1),
     ]:
-        for old in folder.glob("*.json"):
-            old.unlink()
-        (folder / name).write_text(content, encoding="utf-8")
+        (folder / "conversation.json").write_text(content, encoding="utf-8")
         with pytest.raises(InputError, match="cannot be read"):
             app.session(resume=True)
+    # A conversation whose listing entry is unreadable is left out of the list.
+    (folder / "meta.json").write_text("{}", encoding="utf-8")
+    assert app.conversations() == []
+    # Files from the earlier one-file-per-conversation layout are not conversations.
+    (tmp_path / "sessions" / "20250101-000000-0a1b2c3d.json").write_text("{}")
+    assert app.conversations() == []
 
 
 def test_continue_ignores_links_in_the_sessions_directory(settings, tmp_path):
     folder = tmp_path / "sessions"
     folder.mkdir()
-    outside = tmp_path / "outside.json"
-    outside.write_text("{}", encoding="utf-8")
-    (folder / "link.json").symlink_to(outside)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "meta.json").write_text("{}", encoding="utf-8")
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    (folder / "20260102-030405-0a1b2c3d").symlink_to(outside)
+    app = SourceSift(settings)
     with pytest.raises(InputError, match="no saved conversation"):
-        SourceSift(settings).session(resume=True)
+        app.session(resume=True)
+    with pytest.raises(InputError, match="cannot be read"):
+        app.session(resume="20260102-030405-0a1b2c3d")
+    with pytest.raises(InputError, match="no such saved conversation"):
+        app.delete_conversation("20260102-030405-0a1b2c3d")
+    assert (outside / "keep.txt").read_text(encoding="utf-8") == "keep"
 
 
 @pytest.mark.asyncio
