@@ -171,13 +171,16 @@ A saved artifact is a small folder that [Quarto](https://quarto.org) can render:
 ```text
 A1-us-public-debt-in-2026.qmd   the document
 references.json                 the cited references (CSL JSON)
+references.csl                  the citation style: numbered references
 figures/F1.png                  each placed figure
 figures/F1.json                 its recipe and the rows it was drawn from
 ```
 
 In the `.qmd` file each `[S1]` is written as the Quarto citation `[@S1]`, so
 Quarto formats the reference list from `references.json` and links each
-citation to it. A figure points at its picture in `figures/`. The notes become a
+citation to it. `references.csl` makes an export print `[1]` in the text and a
+numbered list in the order first cited, as the web app shows them; replace it
+with any CSL style to change that. A figure points at its picture in `figures/`. The notes become a
 "Notes" section.
 
 Rendering the file runs no code and reads no other file. The header sets

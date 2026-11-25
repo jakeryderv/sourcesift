@@ -256,6 +256,7 @@ def test_an_artifact_downloads_as_its_file_or_a_zip_with_what_it_needs(served):
         assert set(bundle.namelist()) == {
             "A1-front-page.qmd",
             "references.json",
+            "references.csl",
             "figures/F1.png",
             "figures/F1.json",
         }

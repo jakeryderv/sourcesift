@@ -83,6 +83,7 @@ time and the title, holding:
 |---|---|
 | `A1-<title>.qmd` | The document: Markdown with Quarto citations, and no code |
 | `references.json` | The cited references, as a bibliography Quarto reads |
+| `references.csl` | The citation style: `[1]` in the text and a numbered reference list |
 | `figures/F1.png`, `figures/F1.json` | Each placed chart, and the recipe and rows it was drawn from |
 
 The `.qmd` file reads as Markdown in any editor. With

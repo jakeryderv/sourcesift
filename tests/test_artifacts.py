@@ -97,6 +97,7 @@ def test_qmd_runs_no_code_and_uses_quarto_citations():
     assert "execute:\n  enabled: false" in header
     assert "from: markdown-raw_html-raw_tex-raw_attribute" in header
     assert "bibliography: references.json" in header
+    assert "csl: references.csl" in header
     assert "Approved [@S1]. Both agree [@S1; @S2] and [@S1; @S3]." in body
     assert "![Debt](figures/F1.png)" in body and "See [@S2]." in body
     # A line of dashes in the text cannot open a second YAML block.
@@ -278,7 +279,9 @@ def test_quarto_renders_a_saved_artifact_without_running_anything(tmp_path):
     assert done.returncode == 0, done.stderr.decode()
     html = path.with_suffix(".html").read_text(encoding="utf-8")
     # The reference list is built from the bibliography; a title is only text.
-    assert "Injected Heading" in html and "<h1>Injected" not in html
+    assert "Injected heading" in html and "<h1>Injected" not in html
+    # Citations are numbered, as in the web app, not printed as author and year.
+    assert ">[1] </div>" in html and "Writer," not in html
     assert "<script>document.title" not in html and "&lt;script&gt;" in html
     assert not (tmp_path / "RAN").exists()
 

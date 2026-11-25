@@ -66,7 +66,7 @@ offers:
 | Action | Result |
 |---|---|
 | **Copy** | The artifact's Markdown on the clipboard |
-| **Download** | A zip with the artifact's [Quarto](https://quarto.org) file (`.qmd`), `references.json`, and its figures |
+| **Download** | A zip with the artifact's [Quarto](https://quarto.org) file (`.qmd`), its references and their citation style, and its figures |
 | **Export as…** | A web page, PDF, Word document, or slides |
 
 **Export as…** appears only when Quarto is installed on your computer, because
