@@ -1,7 +1,7 @@
 # SourceSift — Use Cases & Product Philosophy
 
 **Status:** Maintained product reference. Phases 1–3 implement supplied
-context, bounded research from registered sources, and interactive terminal chat. These use cases also describe
+context, bounded research from registered sources, and interactive conversations in a local web app. These use cases also describe
 later product goals; plugin discovery, ranking workflows, and local/global expansion
 remain later work. See the [research guide](research.md)
 for current coverage and limitations.
@@ -24,7 +24,7 @@ SourceSift combines:
 - Agent-powered research, analysis, and synthesis.
 - User-defined context, interests, and preferences.
 - An extensible Python SDK and plugin ecosystem.
-- An interactive research conversation with a simple terminal interface.
+- An interactive research conversation in a local web app, with artifacts: documents that cite their sources and can be exported.
 - A composable command-line interface for quick one-off tasks.
 
 **Core philosophy:** Bring relevant information to the user from appropriate sources, rather than requiring the user to find and search each source individually.
@@ -82,8 +82,9 @@ SourceSift should provide useful results without requiring persistent storage or
 Each request can retrieve current information, evaluate it, and return a response.
 
 Configuration and context files are compatible with this approach, as is state
-held in memory during a request or conversation. Caching, search indexes, historical tracking, and
-persistent sessions are optional future enhancements.
+held in memory during a request or conversation. The web app saves conversations
+as plain files; caching, search indexes, and historical tracking are optional
+future enhancements.
 
 ### Composable and Programmable
 
@@ -449,9 +450,10 @@ Start `ssift web`, with optional personal Markdown guidance, then ask:
 
 The conversation retains evidence, article identities, citations, and limitations.
 Retained evidence has retrieval timestamps and is not presented as freshly checked.
-The user can cancel a turn, inspect loaded context, or start a new session. A new
-session reloads configured context; exiting discards the conversation. See the
-[web app guide](web.md).
+The user can cancel a turn or start a new conversation. The last request produces
+an artifact: a brief shown beside the chat that keeps its citations and can be
+exported. Conversations are saved and can be reopened unless the app is started
+with `--no-save`. See the [web app guide](web.md).
 
 ## 7. Agent Responsibilities
 
@@ -486,12 +488,15 @@ The initial design should support:
 - In-memory source registries and session state.
 - Direct terminal output and file redirection.
 
+The web app additionally saves conversations and their artifacts as plain files
+in the user's data directory. No database is involved, and `ssift ask` and the
+SDK save nothing unless asked.
+
 Potential future enhancements include:
 
 - HTTP response and article caching.
 - Source metadata caching.
 - Historical article indexing.
-- Persistent conversational sessions.
 - Scheduled monitoring and change detection.
 - Searchable local archives.
 
@@ -506,7 +511,7 @@ These features should be added when specific use cases justify them.
 - Semantic selection using source links, metadata, descriptions, and the user's request.
 - Python SDK and shared built-in plugin contracts, followed by third-party plugin support.
 - PydanticAI + OpenRouter.
-- Cyclopts CLI and Textual/Rich/asyncio chat.
+- Cyclopts CLI and a local web app for conversations and artifacts.
 - User-defined context through configuration and Markdown.
 - Stateless research and source-grounded responses.
 - stdin/stdout and file-based workflows.
@@ -548,7 +553,7 @@ The first useful research milestone should let a user:
 The roadmap ties these behaviors to fixture-based checks and a small live
 evaluation set. Recommendation quality is evaluated against labeled examples as
 structured briefings arrive. Plugin extensibility is verified in its own milestone;
-local/global coverage, chat, and saved archives have later completion criteria.
+local/global coverage and saved archives have later completion criteria.
 
 The primary measure of success is whether SourceSift consistently discovers and
 presents relevant, well-supported information with minimal user effort.

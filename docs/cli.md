@@ -28,8 +28,8 @@ For a development checkout, prefix commands with `uv run --locked`.
 | `--reasoning-effort` | Optional model-supported reasoning effort |
 | `--format markdown` | Markdown answer, the default |
 | `--format plain` | Plain-text answer without terminal styling |
-| `--json` | One JSON object: answer, references, visuals, notes, usage, and retrieval details |
-| `--report` | Also save a Markdown report; its path is printed to stderr |
+| `--json` | One JSON object: answer, references, figures, artifacts, notes, usage, and retrieval details |
+| `--artifact` | Also save an artifact; its path is printed to stderr |
 | `--debug` | On a model failure, also print the raw provider response to stderr |
 
 The prompt is required. Put `--` before a prompt that starts with a dash.
@@ -56,6 +56,8 @@ ssift ask "Check news" --json | jq '.references[] | {id, title, url}'
 |---|---|
 | `answer` | The answer text, with `[S1]`-style citation IDs |
 | `references` | Cited evidence: `id`, `title`, `url`, `publisher`, dates, `kind`, and per-item `limitations` |
+| `figures` | Charts the answer or an artifact places: the recipe and the rows each was drawn from |
+| `artifacts` | Documents written in this run, as Markdown with `[S1]` citations |
 | `limitations` | Notes about coverage, freshness, and retrieval gaps |
 | `selected_sources`, `window` | The catalog sources read and the date window applied |
 | `usage`, `model`, `http_requests` | Model token counts, model ID, and the number of HTTP requests made |
@@ -63,22 +65,31 @@ ssift ask "Check news" --json | jq '.references[] | {id, title, url}'
 `--format` still controls how the model writes `answer`. Errors are reported on
 stderr with the usual exit codes, and stdout stays empty.
 
-## Reports
+## Artifacts
 
-`--report` saves the request, answer, visuals, references, and notes as a Markdown
-file and prints its path to stderr, so stdout still carries only the answer:
+`--artifact` saves a document and prints its path to stderr, so stdout still
+carries only the answer:
 
 ```sh
-ssift ask "Check tech and AI this week" --report
+ssift ask "Write a briefing on tech and AI this week" --artifact
 ```
 
-Reports go to the [configured reports directory](configuration.md#reports). Each
-report is a new file named from the UTC time and the first words of the prompt;
-existing files are never replaced. Tables and headline figures are written into
-the report as Markdown. The terminal cannot draw a chart or map, so a report
-saved from here lists the rows the chart was drawn from instead; a report saved
-from the [web app](web.md) includes the chart as an image. SourceSift writes the
-file from the finished result. The model has no tool for writing or reading files.
+With the flag the model can write an [artifact](research.md#artifacts); if it
+does not, the answer itself is saved as one. Each run gets a new folder in the
+[configured artifacts directory](configuration.md#artifacts), named from the UTC
+time and the title, holding:
+
+| File | Content |
+|---|---|
+| `A1-<title>.qmd` | The document: Markdown with Quarto citations, and no code |
+| `references.json` | The cited references, as a bibliography Quarto reads |
+| `figures/F1.png`, `figures/F1.json` | Each placed chart, and the recipe and rows it was drawn from |
+
+The `.qmd` file reads as Markdown in any editor. With
+[Quarto](https://quarto.org) installed, `quarto render A1-<title>.qmd --to pdf`
+(or `html`, `docx`, `revealjs`) produces a finished file with a formatted
+reference list. SourceSift writes the files from the finished result. The model
+has no tool for writing or reading files.
 
 ## Exit codes and troubleshooting
 
@@ -105,10 +116,11 @@ Publisher restrictions, missing dates, and partial coverage appear as notes.
 An unsuccessful retrieval returns an inability to verify information (exit `0`),
 with no invented current-news briefing. A model failure still exits `1`.
 
-The default total timeout is 60 seconds. For longer research requests, increase
+The default total timeout is 120 seconds. For longer research requests, increase
 `[limits].timeout_seconds` in configuration; the live evaluation uses 180 seconds.
 
 ## Web app
 
-`ssift web` serves the chat as a local page. See the [web app guide](web.md).
-A bare `ssift` shows help.
+`ssift web` serves the chat as a local page, with saved conversations and an
+artifact pane. See the [web app guide](web.md). `ssift ask` is one request and
+saves no conversation. A bare `ssift` shows help.

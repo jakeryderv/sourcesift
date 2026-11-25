@@ -4,8 +4,11 @@ SourceSift is a research agent with a local web app, a Python SDK, and a one-off
 “check news” or “check tech” select registered sources using descriptions, coverage
 metadata, and optional user context, then return answers with evidence references.
 
-**Phases 1–3 are implemented:** interactive terminal conversations, supplied-text analysis, semantic source
+**Phases 1–3 are implemented:** supplied-text analysis, semantic source
 selection, RSS/Atom retrieval, feed discovery, and bounded article extraction.
+The web app keeps saved conversations and shows artifacts: documents the agent
+writes, with citations and charts, that export through [Quarto](https://quarto.org)
+when it is installed.
 The built-in catalog of 32 sources covers US national and world news, technology,
 AI, science, health, research preprints, business, marketing, finance, and US policy and government,
 including live data from Hacker News, the US Treasury, and a worldwide weather forecast. Sources and dates are explicit; missing evidence
@@ -46,12 +49,12 @@ ssift web                                      # chat in the browser
 ssift ask "Check news"
 ssift ask "Check tech and AI"
 ssift ask "What is Hacker News discussing right now?"
-ssift ask "Check world news" --report          # also saves a Markdown report
+ssift ask "Check world news" --artifact        # also saves the answer as an artifact
 ssift ask "Check news" --json | jq .references # one JSON object for other programs
 ssift ask "Summarize this document" --file report.md
 cat report.md | ssift ask "Summarize this" > summary.md
-ssift web --save                               # keep this conversation
-ssift web --continue                           # reopen the latest saved one
+ssift web --continue                           # reopen the latest saved conversation
+ssift web --no-save                            # keep conversations in memory only
 ```
 
 ```python
@@ -63,9 +66,10 @@ print(result.answer)
 # Inside an async application: result = await app.run(...)
 ```
 
-In the web app, **Enter** sends and **Shift+Enter** adds a line. Conversations stay
-in memory unless started with `--save`; `--continue` reopens the latest saved one.
-Follow-ups retain evidence and citations. See the [web app guide](docs/web.md).
+In the web app, **Enter** sends and **Shift+Enter** adds a line. Conversations are
+saved and listed for reopening unless started with `--no-save`. Follow-ups retain
+evidence and citations, and "write a report on…" produces an artifact beside the
+chat. See the [web app guide](docs/web.md).
 
 Context and retrieved evidence are sent to the selected model through OpenRouter.
 No model is selected implicitly. Research requires a tool-capable model. See the

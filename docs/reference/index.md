@@ -19,13 +19,30 @@ remains planned.
         - SourcesSettings
         - Result
         - Usage
+        - Figure
+        - Table
+        - Column
+        - render_png
+        - Artifact
+        - artifact_from_answer
+        - render_qmd
+        - save_artifacts
+        - ConversationInfo
         - Settings
         - AgentSettings
         - ContextSettings
         - Limits
+        - ArtifactsSettings
+        - SessionsSettings
         - load_settings
         - SourceSiftError
         - ConfigurationError
         - InputError
         - ModelError
         - hello
+
+::: sourcesift.export
+    options:
+      members:
+        - export_formats
+        - export_artifact

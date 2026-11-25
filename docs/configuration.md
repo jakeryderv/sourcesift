@@ -27,13 +27,12 @@ files = ["project.md"]          # optional background documents
 [limits]
 max_input_bytes = 131072
 max_context_files = 16
-timeout_seconds = 60
-max_output_tokens = 2048
+timeout_seconds = 120
+max_output_tokens = 8192
 ```
 
-No model is chosen implicitly. Interactive chat opens a setup panel when the model
-or credential is missing; `/model` changes settings for that chat only. These
-changes are not written to TOML or environment files. `SOURCESIFT_MODEL` overrides `[agent].model`.
+No model is chosen implicitly; a request without one fails with a message saying
+how to set it. `SOURCESIFT_MODEL` overrides `[agent].model`.
 `SOURCESIFT_REASONING_EFFORT` overrides `[agent].reasoning_effort`. Effort is optional;
 omitting it uses the provider default. Accepted values are `none`, `minimal`, `low`,
 `medium`, `high`, and `xhigh`; support depends on the selected model. The example
@@ -67,33 +66,49 @@ cap applies to each model response. Input bytes are not model tokens: a model ma
 have a smaller context window. Context and retrieved evidence are sent to the
 selected model through OpenRouter. Local configuration does not mean offline inference.
 
-## Reports
+## Artifacts
 
 ```toml
-[reports]
-directory = "reports" # relative to this TOML file; `~` expands
+[artifacts]
+directory = "artifacts" # relative to this TOML file; `~` expands
 ```
 
-`ssift ask --report` and `/report` in chat save Markdown reports here. Without
-this setting they go to `reports/` in the platform's per-user `sourcesift` data
-directory: `$XDG_DATA_HOME/sourcesift/reports/` (normally
-`~/.local/share/sourcesift/reports/`) on Linux, `~/Library/Application
-Support/sourcesift/reports/` on macOS, and `%LOCALAPPDATA%\sourcesift\reports\` on
-Windows. The directory is created when the first report is saved.
+`ssift ask --artifact` saves each run's [artifact files](research.md#artifact-files)
+in a new folder here. Without this setting they go to `artifacts/` in the
+platform's per-user `sourcesift` data directory:
+`$XDG_DATA_HOME/sourcesift/artifacts/` (normally
+`~/.local/share/sourcesift/artifacts/`) on Linux, `~/Library/Application
+Support/sourcesift/artifacts/` on macOS, and
+`%LOCALAPPDATA%\sourcesift\artifacts\` on Windows. The directory is created
+when the first artifact is saved. Artifacts of a saved web conversation are kept
+with that conversation instead.
 
 ## Saved conversations
 
 ```toml
 [sessions]
-save = false           # true saves every conversation without --save
+save = false           # true also saves SDK sessions that do not ask for it
 directory = "sessions" # relative to this TOML file; `~` expands
 ```
 
-Conversations are kept in memory unless `save` is true or `ssift web` is started
-with `--save` or `--continue`. Saved conversations go to `sessions/` in the same
-per-user data directory as reports unless `directory` is set. A file holds the
-prompts, answers, retrieved evidence text, and attached document text, so it is
-readable by your user only. Credentials and settings are never saved.
+`ssift web` saves every conversation unless started with `--no-save`. SDK
+sessions are kept in memory unless `save` is true here or `save=True` is passed.
+Saved conversations go to `sessions/` in the same per-user data directory as
+artifacts unless `directory` is set. Each conversation is a folder named by its
+start time:
+
+```text
+sessions/20261125-194036-873c0947/
+  conversation.json   prompts, answers, evidence, figures, artifacts
+  meta.json           title and counts, for the conversation list
+  artifacts/          the conversation's artifact files
+```
+
+A conversation holds the prompts, answers, retrieved evidence text, and attached
+document text, so the folder is readable by your user only. Credentials and
+settings are never saved. Files saved by version 0.6 (one `.json` file per
+conversation, directly in the directory) are left in place but are not listed or
+reopened.
 
 ## Sources and freshness
 
@@ -125,15 +140,16 @@ All are `[limits]` settings. Existing input limits above remain unchanged.
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `timeout_seconds` | 60 | Total wall-clock timeout for model and retrieval |
-| `max_output_tokens` | 2048 | Per-model-response output/reasoning budget |
+| `timeout_seconds` | 120 | Total wall-clock timeout for model and retrieval |
+| `max_output_tokens` | 8192 | Per-model-response output/reasoning budget |
 | `max_model_requests` | 6 | All calls, including tool continuations and citation repair |
 | `max_tool_calls` | 8 | Total agent tool calls |
 | `max_sources` | 3 | Distinct registered sources attempted |
 | `max_items` | 18 | Distinct evidence items retained |
 | `max_items_per_source` | 6 | Accepted entries per source, most recent dated first |
 | `max_articles` | 6 | Article attempts, including failures |
-| `max_blocks` | 4 | [Visuals](research.md#visuals) in one answer |
+| `max_figures` | 4 | New [figures](research.md#figures) in one turn |
+| `max_artifact_chars` | 40000 | Length of one [artifact](research.md#artifacts) |
 | `max_http_requests` | 24 | Requests including robots and redirects |
 | `http_timeout_seconds` | 10 | One fetch, including DNS, robots, redirects, and body |
 | `max_response_bytes` | 2097152 | Decoded response-body byte limit |
@@ -146,8 +162,8 @@ discovery retains at most four declared feeds. One model retry can repair missin
 or unknown citations, within the request limit. Tool/model budget exhaustion is a
 model error; HTTP/source/evidence limits produce partial-coverage notes.
 
-For longer research, a 180-second total timeout and 4096 output tokens can help;
-these are the live evaluation settings. Raising limits increases possible latency
+For longer research or long artifacts, a 180-second total timeout can help; the
+live evaluation uses 180 seconds and 4096 output tokens. Raising limits increases possible latency
 and provider cost. The SDK validates upper bounds on every numeric budget.
 
 ## Session limits and context reload

@@ -1,6 +1,6 @@
 site_name: SourceSift
 site_url: https://jakevanslyke.com/sourcesift/
-site_description: Python SDK and CLI for context-aware requests and source-aware research
+site_description: Research agent with a local web app, Python SDK, and CLI for source-aware, cited answers and artifacts
 repo_url: https://github.com/jakeryderv/sourcesift
 edit_uri: blob/main/docs/
 strict: true
