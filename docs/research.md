@@ -2,7 +2,7 @@
 
 Ask naturally: “check news,” “check tech and AI,” or “find developments relevant to
 this project.” The model selects sources from their descriptions and your context.
-There is no keyword router, category flag, search engine, or persistent history.
+There is no keyword router, category flag, or search engine.
 
 ## Built-in catalog
 
@@ -46,7 +46,7 @@ comprehensive coverage, and can miss relevant reporting. Local news is not cover
 
 Sources marked “summaries only” refuse automated article retrieval (through
 robots rules or by blocking the request), so answers can cite their feed summaries
-but `read_article` and `/read` cannot fetch the full text.
+but `read_article` cannot fetch the full text.
 
 Feeds are public recent-entry sources, not historical archives. A reachable feed
 does not imply that every linked article is accessible; subscriptions, robots
@@ -60,7 +60,7 @@ Some sources answer with current data instead of offering a feed. The model
 reaches them through the `query_source` tool with typed parameters, and their
 records are cited like any other evidence, with the kind `api record`.
 
-| ID | Parameters | Evidence | Tables for visuals |
+| ID | Parameters | Evidence | Tables for figures |
 |---|---|---|---|
 | `hacker-news` | `query`: keywords, or empty for the current front page | Story titles, points, comment counts, and submitted links; keyword results are limited to the date window | The stories with points, comments, and submitter |
 | `weather` | `place`: a city or town, optionally with a region or country; `days` of forecast (1 to 7, default 3); `units`: `metric` or `imperial` | Current conditions and the daily forecast for the place it resolved, with local observation time | Current conditions, the location, hourly temperature, and the daily forecast |
@@ -87,38 +87,94 @@ does (`api.open-meteo.com` and `geocoding-api.open-meteo.com`). Feeds, articles,
 discovery, and every other host are still checked, and address checks, size
 limits, timeouts, and the request budget apply to every request.
 
-## Visuals
+## Figures
 
 A live data source can return its data as tables alongside the text the model
-reads. The model is told each table's columns and may call the `show` tool to
-pick a widget for one of them, naming the columns to use:
+reads. The model is told each table's columns and may call the `make_figure`
+tool to draw a chart from one of them, naming the columns to use:
 
-| Widget | Draws | Main options |
-|---|---|---|
-| `chart` | A line, area, bar, stacked bar, scatter, or donut chart | `kind`, `x`, `y` (one or more numeric columns), `series`, `log_scale` |
-| `table` | Rows and columns | `columns`, `max_rows` |
-| `stats` | Headline figures from one row, with the change from the row before | `columns`, `row` |
-| `map` | Places from latitude and longitude columns | `label`, `value`, `zoom`, `overlay` (`none` or `radar`) |
+| Option | Meaning |
+|---|---|
+| `kind` | `line`, `area`, `bar`, `stacked_bar`, `scatter`, or `donut` |
+| `x` | The column across the chart: a time or number column, or categories for bars and donuts |
+| `y` | One to eight numeric columns |
+| `series` | A column whose values split one `y` column into separate series |
+| `log_scale`, `title` | A logarithmic value axis; the chart's title |
 
-Charts and maps are [Plotly](https://plotly.com/javascript/) figures. Each widget
-is built in Python from the table's rows and checked against its columns; when
-the options do not fit (a column that does not exist or is not numeric, too many
-bars), the reason goes back to the model to correct.
+The tool returns an ID such as `F1`. The model places the figure in its answer
+or in an artifact with an ordinary Markdown image whose target is that ID:
+`![US public debt in 2026](F1)`.
 
-- A visual is a snapshot of the data when it was retrieved. To update it, ask
-  again.
-- The model chooses the widget and its options. It cannot pass values: the
-  application builds the visual from the rows the source returned, so a number
-  on screen always comes from retrieved data.
-- A visual is kept only when the answer cites its evidence. Otherwise it is
-  dropped and a note says so.
-- `limits.max_blocks` (default 4) bounds visuals per answer.
-- In a conversation, a follow-up can show data retrieved in an earlier turn
-  without another request. That data is held in memory and is not written to a
-  saved conversation.
+- The picture is drawn in Python with Matplotlib, as a PNG on a white
+  background. It needs no browser or network, so it is the same in the web app,
+  in a saved artifact, and from the SDK.
+- The model chooses the kind and the columns. It cannot pass values: the
+  application draws the figure from the rows the source returned, so a number on
+  the chart always comes from retrieved data.
+- A recipe that does not fit the table (a column that does not exist or is not
+  numeric, more than 60 bars, more than 8 series) is refused with the reason,
+  which the model can correct.
+- A figure is a snapshot of the data when it was retrieved, and it counts as a
+  citation of that evidence. To update it, ask again.
+- A figure the model made but did not place is added to the end of the answer.
+- `limits.max_figures` (default 4) bounds new figures per turn; a conversation
+  holds at most 48.
+- In a conversation, a follow-up can draw data retrieved in an earlier turn
+  without another request while the conversation is open. A saved conversation
+  keeps its figures, with the rows each was drawn from, but not the other tables.
+- Tables, headline numbers, and lists are written by the model as Markdown from
+  the evidence. There are no maps.
 
-Visuals are returned as `Result.blocks` and in `--json` output. The terminal only
-lists them by widget and title; the [web app](web.md) draws them.
+Figures are returned as `Result.figures` and in `--json` output: the recipe and
+the rows, not the picture. `sourcesift.render_png(figure)` draws one.
+
+## Artifacts
+
+An artifact is a document the model writes for keeping: a report, a briefing, a
+comparison. In `ssift web` and SDK sessions the model has a `write_artifact`
+tool taking a title and Markdown; `ssift ask --artifact` enables it for one
+request. Passing an existing artifact's ID revises it and raises its version.
+
+The model has no tool that writes a file or runs code. The application checks
+the text and writes the files itself. An artifact is refused, with the reason
+returned to the model, when it:
+
+- cites an evidence ID that does not exist, or contains an image that is not a
+  figure made in this conversation;
+- contains a Quarto code cell (```` ```{python} ````), inline code that runs,
+  a shortcode (`{{< include … >}}`), or a raw HTML or LaTeX block;
+- starts with a YAML header, or is longer than `limits.max_artifact_chars`
+  (default 40,000).
+
+A conversation holds up to 12 artifacts. Each carries the notes (coverage,
+freshness, retrieval gaps) of the turn that wrote it.
+
+### Artifact files
+
+A saved artifact is a small folder that [Quarto](https://quarto.org) can render:
+
+```text
+A1-us-public-debt-in-2026.qmd   the document
+references.json                 the cited references (CSL JSON)
+figures/F1.png                  each placed figure
+figures/F1.json                 its recipe and the rows it was drawn from
+```
+
+In the `.qmd` file each `[S1]` is written as the Quarto citation `[@S1]`, so
+Quarto formats the reference list from `references.json` and links each
+citation to it. A figure points at its picture in `figures/`. The notes become a
+"Notes" section.
+
+Rendering the file runs no code and reads no other file. The header sets
+`execute: enabled: false` and turns off raw HTML and LaTeX, and the checks above
+keep cells and includes out of the text, so an export contains only what the
+artifact shows. Text retrieved from the web still appears in the references, as
+titles and publisher names.
+
+Quarto is optional. Without it the `.qmd` file reads as Markdown. With it,
+`quarto render <file> --to html`, `typst` (PDF), `docx`, or `revealjs` (slides)
+produces a finished document, and the web app offers the same exports as
+buttons.
 
 arXiv's search API also disallows all automated agents in `robots.txt`. It has
 not been given the exemption above, so arXiv is read through its RSS feed without

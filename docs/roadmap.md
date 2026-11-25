@@ -2,13 +2,14 @@
 
 **Goal:** Incrementally build a Python-first research agent that understands requests
 such as “check news” and “check tech,” selects relevant registered sources, and
-returns grounded responses through interactive terminal chat, a reusable SDK, and
+returns grounded responses through a local web app, a reusable SDK, and
 a composable one-off CLI.
 
 **Status:** Phases 0–3 are implemented: package/release tooling, supplied-context
-requests, grounded research, and interactive sessions with a Textual TUI. A
-follow-up round added a wider catalog, live data sources, saved reports, and
-opt-in saved conversations. Examples in later phases remain planned behavior.
+requests, grounded research, and interactive sessions. Follow-up rounds added a
+wider catalog, live data sources, a local web app with saved conversations, and
+artifacts with figures and Quarto export; the terminal chat was removed.
+Examples in later phases remain planned behavior.
 
 **Related documents:** [Use cases and product scope](use-cases.md),
 [architecture and proposed contracts](design.md), and [setup and releases](https://github.com/jakeryderv/sourcesift#readme).
@@ -200,19 +201,35 @@ prototype while keeping the Python SDK, CLI, and TUI as the product:
 - [x] Add live data sources behind a `query_source` tool, with built-in adapters for Hacker News and US Treasury fiscal data.
 - [x] Add opt-in saved conversations with `--save` and `--continue`.
 
-- [x] Make live data sources typed Python definitions that can return data shapes, add widgets and a `show` tool, and return visuals as `Result.blocks` (step 1 of the [web app proposal](design.md#11-proposal-web-app-typed-data-and-display-blocks)).
+- [x] Make live data sources typed Python definitions that can return data shapes, add widgets and a `show` tool, and return visuals as `Result.blocks` (later replaced; see [artifacts and one interactive interface](#artifacts-and-one-interactive-interface)).
 - [x] Build `ssift web`: a local page with chat, citations, sources, and drawn visuals, plus model-free refresh of live data (step 2).
 - [x] Add a weather source and a map view with a radar layer (step 3).
 - [x] Draw visuals with Plotly from tables: one `chart` widget with six kinds, maps by Plotly, widgets that may return any Plotly figure, and no automatic refresh.
 - [x] Include visuals in reports: tables and figures as Markdown, and charts and maps as images when saved from the web app.
-- [ ] Export a report as PDF.
-- [ ] Add stock prices (step 4).
+- [x] Export as PDF: done through artifacts and Quarto, below.
+- [ ] Add stock prices.
 
 Open questions from this round:
 
 - [x] Decide whether documented public APIs may be exempt from the robots check: yes, per source and per declared host. Weather (Open-Meteo) uses it; arXiv search could be added the same way.
 - [x] Add `/sources` to browse the catalog and enable or disable sources for one conversation.
 - [ ] Re-run the live evaluation against the larger catalog and record a new baseline.
+
+### Artifacts and one interactive interface
+
+Three interfaces had drifted apart, so this round cut down to an SDK, `ssift ask`,
+and `ssift web`, all on one core. The reasoning is in the
+[design](design.md#11-web-app-figures-and-artifacts).
+
+- [x] Remove the Textual chat and its commands; the web app is the interactive interface and a bare `ssift` shows help.
+- [x] Replace widgets, `show`, and `Result.blocks` with a `make_figure` tool and `Result.figures`, drawn in Python with Matplotlib. Maps and radar are dropped.
+- [x] Replace reports with artifacts: Markdown the model writes through `write_artifact`, checked by the application and saved as Quarto files with a bibliography and figure images.
+- [x] Save each web conversation in its own folder by default, with its artifacts; list, reopen, rename, and delete conversations.
+- [x] Lay the page out as conversations, chat, and an artifact pane with copy, download, and export.
+- [x] Export artifacts as a web page, PDF, Word document, or slides when Quarto is installed.
+- [ ] Run the live evaluation with artifact and figure requests, and record how often a model's written tables match the source rows.
+- [ ] Load data source files from configuration into `ssift web`.
+- [ ] Upload files and choose the model in the page.
 
 ## Phase 4 — Discovery Workflows and Recommendations
 
@@ -339,6 +356,7 @@ For each implemented capability:
 | Complete | Semantic source selection and grounded research | 2 |
 | Complete | Interactive sessions and Textual chat | 3 |
 | Complete | Wider catalog, live data, reports, saved conversations | 3 follow-up |
+| Complete | Artifacts, figures, saved web conversations, Quarto export | 3 follow-up |
 | P1 | Reusable briefings and recommendations | 4 |
 | Later | Third-party plugins and SDK extension contracts | 5 |
 | Optional | Database persistence and archive search | 6 |
@@ -346,7 +364,7 @@ For each implemented capability:
 
 **Core progression:**
 
-`SDK + CLI → Registered Sources + Grounded Research → Interactive Sessions + TUI → Richer Briefings → Plugins`
+`SDK + CLI → Registered Sources + Grounded Research → Interactive Sessions + Web App + Artifacts → Richer Briefings → Plugins`
 
 Persistence, broader coverage, and native/frontend extensions build on that core
 when their own use cases justify them.

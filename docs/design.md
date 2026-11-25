@@ -23,8 +23,8 @@ matter for my work?” without selecting feeds or learning category-specific fla
 Registered sources carry links, descriptive metadata, and brief descriptions that
 the agent uses to decide where to look.
 
-The initial application provides a Python SDK and Cyclopts CLI. Requests run
-without an application database or saved conversation history. Configuration and
+The application provides a Python SDK, a Cyclopts CLI, and a local web app. One-off
+requests run without an application database or saved conversation history. Configuration and
 context files are supported, and each run can maintain in-memory state. In this
 design, semantic selection means interpreting the prompt against source metadata;
 it does not require embeddings, a vector database, or an exact keyword syntax.
@@ -43,7 +43,8 @@ it does not require embeddings, a vector database, or an exact keyword syntax.
 | Development / distribution | uv / PyPI |
 | Initial state | Configuration files and per-run memory |
 | Future persistence | SQLite + FTS5, when justified |
-| Terminal UI | Textual + Rich + asyncio |
+| Interactive interface | Local web app (Starlette) |
+| Figures / export | Matplotlib / optional Quarto |
 | Native optimization | Optional Rust, after profiling |
 
 ## 2. Architecture and Request Flow
@@ -52,7 +53,7 @@ it does not require embeddings, a vector database, or an exact keyword syntax.
 User request + optional context
               │
               ▼
-CLI / Textual chat / Python SDK
+CLI / web app / Python SDK
               │
               ▼
 SourceSift application
@@ -65,7 +66,7 @@ SourceSift application
 │   └── Evaluate and synthesize retrieved information
 ├── Python retrieval and extraction
 │   └── HTTP, feed parsing, normalization, provenance
-└── Structured result → answer, references, and limitations
+└── Structured result → answer, references, figures, artifacts, limitations
 ```
 
 The agent may alternate between retrieval and evaluation within a bounded request.
@@ -238,7 +239,8 @@ print(result.answer)
 ```
 
 The result contains answer text, limitations, model usage, cited evidence
-references, selected source IDs, the research window, and HTTP request count.
+references, figures, artifacts, selected source IDs, the research window, and
+HTTP request count.
 The CLI renders the same result used by SDK callers.
 The API is early and may evolve before 1.0.
 
@@ -260,9 +262,8 @@ interactive input. The exit convention is `0` for a usable result (including
 clearly disclosed partial coverage), `1` when the request cannot be completed, and
 `2` for invalid invocation/configuration. See the [CLI reference](cli.md) for flags and interruption/pipe exit codes.
 
-`ssift` in a terminal, or explicit `ssift chat`, runs a Textual interface over the
-shared session runtime. Slash-command completion, an ignore-aware `@` file picker,
-and session-only model setup make chat the primary interactive entry point. Plugin
+`ssift web` serves the interactive interface over the shared session runtime; see
+[section 11](#11-web-app-figures-and-artifacts). A bare `ssift` shows help. Plugin
 inspection and workflow commands arrive in their roadmap phases. Archive search and ingestion commands depend on future persistence.
 The installed entry point is `ssift = "sourcesift.cli:main"`.
 
@@ -276,16 +277,15 @@ Per-turn source, HTTP, tool, and model limits restart; session turn and byte lim
 bound accumulated history. Reaching them requires a new session, without silent
 truncation or model-generated memory summaries.
 
-Textual owns the terminal and event loop. Async workers call `Session.run()` and
-consume UI-independent status/draft/reset events. Drafts remain provisional until
-citation validation completes; the UI replaces them with the final `Result`, or
-discards them on error/cancellation. The core imports no Textual or Rich UI types.
+The web server calls `Session.run()` and forwards UI-independent
+status/step/draft/reset events to the page. Drafts remain provisional until
+citation validation completes; the page replaces them with the final `Result`, or
+discards them on error/cancellation. The core imports no web or UI types.
 Personal guidance is explicitly selected through `[context].instructions_file`;
 other files and web content stay research material. Context is loaded once per
-session; reset reloads it atomically. Selected per-turn attachments are read and
-validated at submission, with relative path labels, then passed as ordinary
-`Request.context` documents to the same session runtime. UI discovery and keyboard
-logic remain outside the core. See the [web app guide](web.md) for the user-facing contract.
+session; reset reloads it atomically. Per-turn attachments are read and
+validated at submission, then passed as ordinary `Request.context` documents to
+the same session runtime. See the [web app guide](web.md) for the user-facing contract.
 
 ## 7. Grounding, Failure Handling, and Limits
 
@@ -319,7 +319,8 @@ logic remain outside the core. See the [web app guide](web.md) for the user-faci
 | Testing | pytest, with fixtures and separate live evaluations |
 | Future persistence / archive search | SQLite / FTS5 |
 | Optional native modules | PyO3 + Maturin |
-| Terminal UI | Textual + Rich + asyncio |
+| Web app | Starlette, uvicorn, markdown-it-py |
+| Figures / artifact export | Matplotlib / Quarto (optional) |
 | Build / distribution | uv / PyPI |
 
 ## 9. Proposed Repository Structure
@@ -351,215 +352,128 @@ sourcesift/
 
 SQLite/FTS5 may later support caching, saved research, feedback, and archive search.
 Explicit user context already supports personalization without those features.
-Persistent conversations and automatic preference learning are separate additions.
+Conversations are saved as files (section 11); automatic preference learning is a
+separate addition.
 
-The Textual TUI uses the Python session runtime directly, with asyncio workers for
-streaming and cancellation. Rust native modules should follow measured bottlenecks,
+Rust native modules should follow measured bottlenecks,
 remain behind Python interfaces, and include a platform-wheel distribution plan.
 
 Email integrations, general crawling, browser automation, semantic/vector search,
-complex multi-agent orchestration, and hosted services remain deferred. A local
-web application is proposed in [section 11](#11-proposal-web-app-typed-data-and-display-blocks). Product scope is maintained in [use-cases.md](use-cases.md); sequencing
+complex multi-agent orchestration, and hosted services remain deferred. The local
+web application is described in [section 11](#11-web-app-figures-and-artifacts). Product scope is maintained in [use-cases.md](use-cases.md); sequencing
 and completion criteria belong in [roadmap.md](roadmap.md).
 
-## 11. Proposal: Web App, Typed Data, and Display Blocks
+## 11. Web App, Figures, and Artifacts
 
-**Status: steps 1 to 3 of the order of work are implemented, and the data layer
-has since been simplified.** Sources now return plain tables instead of several
-typed shapes, the built-in widgets build [Plotly](https://plotly.com/javascript/)
-figures from named columns, and a visual is a snapshot with no automatic refresh,
-so the shapes, `refresh_seconds`, and the refresh and tile routes described below
-no longer exist. The [research](research.md#visuals) and [SDK](sdk.md) guides
-describe what is built. Step 2 is the [web app](web.md). Built-ins are
-registered by `app.register(...)` rather than an extension file. The rest of this
-section is the proposal as agreed. It
-would make a local web app the main interface, keep `ssift ask`, retire the Textual
-chat once the web app covers the same ground, and turn the SDK into the way
-SourceSift is extended: typed sources and widgets written in Python.
+This section records the design built in November 2026. It replaced the Textual
+chat, Markdown reports, and Plotly widgets with fewer parts that share one core.
 
-### Goals
+### Interfaces
 
-- Answer requests such as “show me the weather in Chicago” or “show the national
-  debt this year” with a live visual next to the cited answer.
-- Keep every number on screen traceable to retrieved evidence.
-- Let new data sources be added without touching the agent loop, and later by
-  third-party packages.
+There are three ways in, and every one calls the same `SourceSift` and `Session`
+objects:
 
-Not goals: a hosted service, a general dashboard builder, or letting the model
-write code or markup that the page runs.
+| Interface | Role | State |
+|---|---|---|
+| Python SDK | The core; everything else is built on it | Whatever the caller keeps |
+| `ssift ask` | One request from a script or pipe | None |
+| `ssift web` | The interactive interface | Saved conversations |
 
-### Three layers
+There is no terminal chat. A second interactive interface had to repeat every
+feature of the first (sources, evidence, saving, visuals), and the two drifted.
+The rule for new work: a capability goes into the core first, and an interface
+only presents it.
 
-Sources and widgets never refer to each other. Both are written against a small
-shared set of typed data shapes, so any widget can show any source's data of a
-shape it accepts.
+### What a turn can produce
 
 ```text
-Source ──produces──► Data shape ◄──accepts── Widget ──renders as──► page primitive
-(weather, prices)    (TimeSeries, …)         (line chart, …)        (chart, map, table, stat)
+query_source ──► evidence [S1]  +  tables
+                                     │
+make_figure(evidence, kind, x, y) ──►│──► Figure F1 (recipe + rows)
+                                          │
+answer text  ──── cites [S1], places ![…](F1)
+write_artifact(title, markdown) ──► Artifact A1, cites and places the same way
 ```
 
-**1. Data shapes.** The shared vocabulary, kept deliberately small:
+- **Evidence** is what was retrieved. Only evidence can be cited.
+- **A table** is plain rows and columns a live data source returns beside its
+  text. Its columns are described to the model; its values are not something the
+  model can change.
+- **A figure** is a recipe (kind, columns, title) plus the table it is drawn
+  from. Python draws it with Matplotlib as a PNG. One drawing routine serves the
+  web page, saved artifacts, and SDK callers, so a figure looks the same
+  everywhere and needs no browser.
+- **An artifact** is a Markdown document with a title, kept across turns and
+  revised by ID.
 
-| Shape | Holds |
-|---|---|
-| `TimeSeries` | Named series of timestamped values with a unit |
-| `Table` | Typed columns and rows |
-| `Stats` | A few labeled values, each with an optional unit and change |
-| `GeoPoints` | Located items with labels and optional values |
+`Result` carries `answer`, `references`, `figures`, and `artifacts`. Figures and
+artifacts replaced `Result.blocks`.
 
-A source may also define a shape of its own (a `Forecast`, say) when the generic
-ones lose too much; only widgets written for that shape can show it.
+### Why the model gets no file or code tool
 
-**2. Sources.** A typed source declares its parameters and what it returns. One
-fetch yields the text the model reads and cites, plus the same data as shapes:
+The model's only way to produce a document is `write_artifact(title, markdown)`.
+The application validates the text and writes every file. This keeps three
+properties:
 
-```python
-class DebtParams(Contract):
-    days: int = Field(default=365, ge=1, le=3650)
+1. **Numbers come from sources.** A chart is drawn from retrieved rows by fixed
+   code. The model cannot supply plotted values or plotting code.
+2. **Exports run nothing.** Artifacts are saved as Quarto (`.qmd`) files, a
+   format that can execute code cells. The application rejects cells, inline
+   code, shortcodes, and raw blocks on the way in, and writes a header that
+   turns execution and raw HTML/LaTeX off. Both must fail for retrieved or
+   model-written text to run during an export.
+3. **Citations are checked.** An artifact citing an unknown evidence ID, or
+   placing an image that is not a figure from this conversation, is refused and
+   the model is told why.
 
+### Why Quarto, and why optional
 
-@source(
-    id="us-treasury-debt",
-    name="US public debt",
-    description="Total US public debt outstanding by day.",
-    params=DebtParams,
-    returns=(TimeSeries,),
-    refresh_seconds=None,  # static; a number lets the page re-fetch
-)
-async def debt(params: DebtParams, context: FetchContext) -> SourceResult:
-    page = await context.get(TREASURY_URL.format(days=params.days))
-    series = parse_debt(page)
-    return SourceResult(evidence=[summarize(series, page)], data=[series])
-```
+Quarto turns one Markdown file into HTML, PDF, Word, and slides, and formats
+citations from a bibliography. SourceSift writes `[S1]` as `[@S1]` and the
+references as CSL JSON, so the reference list is Quarto's work rather than
+ours. Quarto is a separate program of several hundred megabytes, so it is never
+required: without it an artifact is still a readable Markdown file, the web page
+renders artifacts itself with the same Markdown renderer as answers, and only
+the export actions are hidden.
 
-`FetchContext` supplies the bounded `get(url)`, the clock, and the date window, so
-a source cannot reach the network any other way. Each returned data object is tied
-to the citation ID of its evidence. The existing Hacker News and Treasury adapters
-become typed sources; feed sources stay as they are.
+### Storage
 
-**3. Widgets.** A widget declares which shape it accepts, the options the model
-may set, and how to turn data plus options into one of the page's primitives:
-
-```python
-class LineOptions(Contract):
-    title: str = Field(default="", max_length=80)
-    log_scale: bool = False
-
-
-@widget(
-    id="line-chart",
-    description="Values over time.",
-    accepts=TimeSeries,
-    options=LineOptions,
-)
-def line_chart(data: TimeSeries, options: LineOptions) -> Chart:
-    return Chart(
-        title=options.title or data.name, series=data.series, y_log=options.log_scale
-    )
-```
-
-The page knows four primitives: `chart`, `map`, `table`, and `stat`. A widget is a
-Python function from data to primitives, so new widgets need no browser code.
-A visual the primitives cannot express would need a new primitive in the page.
-
-### How a visual gets into an answer
-
-The model gets a second tool beside `query_source`:
+Files, not a database:
 
 ```text
-show(evidence_id="S2", widget="line-chart", options={"title": "US debt, past year"})
+<data dir>/sessions/<ID>/conversation.json   history, evidence, figures, artifacts
+<data dir>/sessions/<ID>/meta.json           title and counts for listing
+<data dir>/sessions/<ID>/artifacts/          .qmd files, references.json, figures/
+<data dir>/artifacts/<time>-<title>/         artifacts saved by `ssift ask --artifact`
 ```
 
-- The model chooses *which* widget and its options. Options are validated against
-  the widget's model, and the widget must accept a shape attached to that evidence.
-- The data comes only from what the source returned for that citation. The model
-  cannot pass values, so it cannot put an invented number on screen.
-- The catalog the model sees lists each source's parameter schema and the shapes
-  it returns, and each widget's accepted shape and options.
-- `Result.blocks` holds the rendered primitives in the order shown, each with its
-  citation ID, alongside `Result.references`.
-
-A block from a source with `refresh_seconds` can be re-fetched by the page through
-`app.fetch_data(source_id, params)`. That runs the source and the same widget
-again: no model request and no token cost. The server enforces the interval.
+`conversation.json` is the record; the `artifacts/` folder is written from it
+after each change and can be regenerated. The web app saves by default because a
+conversation list is only useful if conversations persist; `ssift ask` saves
+nothing unless asked.
 
 ### The web app
 
-`ssift web` starts a server on the loopback address and opens the page. The server
-is a thin layer over the existing `Session`:
+A Starlette server on the loopback address serves a page with three parts: the
+conversation list, the chat, and a side pane for an artifact, the evidence, or
+the sources. Markdown is rendered on the server with raw HTML disabled, and
+figures are embedded as images, so the page never parses model text as HTML and
+loads nothing from another host. Access rules are in the
+[web app guide](web.md#access-and-privacy).
 
-| Route | Purpose |
-|---|---|
-| `POST /api/sessions` | Start or continue a conversation |
-| `POST /api/sessions/{id}/turns` | Run a turn; streams status, draft, then the final result |
-| `GET` / `PUT /api/sessions/{id}/sources` | The catalog and which sources are enabled |
-| `POST /api/data/{source_id}` | Refresh a block's data without the model |
-| `POST /api/sessions/{id}/report` | Save the latest answer as a report |
+### Dropped, and what would bring it back
 
-- The page is static files shipped in the package: chat, citations with an evidence
-  side panel, the source picker, and renderers for the four primitives. Chart and map
-  libraries are bundled rather than loaded from a CDN.
-- It is installed as an optional extra (`sourcesift[web]`) so the CLI stays light.
-- Because a local server can be reached by any page in the browser, it binds to
-  loopback only, requires a per-launch token, and checks the request origin. Files
-  are attached by upload; the page never sends a path for the server to read.
-
-### Extension interface
-
-The SDK's job becomes extending SourceSift, in Python. Sources, widgets, and data
-shapes are ordinary typed Python objects, and built-ins are defined exactly the
-way a user's would be:
-
-```python
-# ~/.config/sourcesift/extensions.py, named by [extensions].files in config.toml
-from sourcesift import TimeSeries, source, widget
-
-@source(id="my-metrics", ...)
-async def my_metrics(params, context): ...
-
-@widget(id="sparkline", accepts=TimeSeries, ...)
-def sparkline(data, options): ...
-```
-
-- An extension file is loaded only when the configuration names it; nothing is
-  picked up from the working directory. It is trusted Python running in the
-  application process, so the guarantee that the model has no file or shell access
-  describes the built-ins, not arbitrary extensions.
-- Package discovery through the `sourcesift.plugins` entry point (section 4) comes
-  after the interface has held still across at least three built-in sources and
-  three widgets. Until then it is documented as unstable.
-- Deliberately not extensible: the agent loop, the fetcher and its network rules,
-  and citation checking.
-
-### Order of work
-
-1. Data shapes, typed sources, widgets, the `show` tool, and `Result.blocks` in
-   the core; port Hacker News and Treasury. `ssift ask --json` gains `blocks`.
-2. `ssift web` with chat, citations, sources, and the `chart` block, shown with
-   Treasury debt over time (no API key, no open access question).
-3. Weather, shown with `stat` and `map` widgets, and the Treasury series shown
-   with a second widget. Reusing widgets across sources is the test of the design.
-4. Stock prices with a live `chart`.
-5. Load extension files, then package discovery; rewrite the SDK guide around
-   extending.
-6. Remove the Textual chat.
+| Dropped | Reason | Would return as |
+|---|---|---|
+| Interactive Plotly charts | A second renderer in the browser, and no export path | An optional interactive view built from the same figure recipe |
+| Maps and the radar layer | Needed outside tile services and could not be exported | A figure kind drawn in Python, if a use appears |
+| `table` and `stats` widgets | Markdown tables written by the model cover them | A table embed that copies rows from a source table, if models mistranscribe values |
+| Widgets as an extension point | One figure tool is enough so far | A plugin interface, with Phase 5 |
 
 ### Open questions
 
-- **Robots and public APIs.** Open-Meteo and the US National Weather Service
-  disallow all agents on their API hosts. Step 3 needs a decision on exempting
-  built-in data sources from the robots check.
-- **Stock data.** Free quotes generally require an API key and have usage terms.
-  Step 4 needs a provider chosen and a place for user-supplied keys in settings.
-- **One tool or one per source.** A single `query_source` keeps the tool list
-  fixed; a tool per source gives the model a native schema for each. The proposal
-  picks the single tool and should be revisited if models misuse it.
-- **How small the shape vocabulary can stay.** Generic shapes make widgets
-  reusable but flatten domain detail; a radar map is not a generic `GeoPoints`
-  view. The rule above (generic first, a source-specific shape when needed) needs
-  testing against weather.
-- **Placement.** Blocks are listed after the answer, in the order the model
-  showed them. Placing a block inside the prose is possible later.
-- **Saved conversations.** Whether blocks are stored with a saved conversation
-  or rebuilt on reopen.
+- Whether artifacts need a table embed that copies source rows, so that numbers
+  in a written table get the same guarantee as numbers in a chart.
+- Loading data source files from configuration and installed plugins into
+  `ssift web`.
+- Uploading files in the page, and choosing the model there.

@@ -43,7 +43,7 @@ Do not combine resolved settings with config/model overrides.
 
 `Result` contains `answer`, `limitations`, configured `model`, and `usage` (model
 requests and reported input/output tokens). Research also supplies `references`,
-`selected_sources`, `window`, and `http_requests`. Citation `[S1]` corresponds to a
+`figures`, `artifacts`, `selected_sources`, `window`, and `http_requests`. Citation `[S1]` corresponds to a
 `Reference` with ID `S1`. References contain actual URLs, publisher hostnames,
 registered source IDs when available, feed-summary/article kind, publication/update
 and retrieval timestamps, and extraction limitations. Only cited evidence appears
@@ -88,31 +88,20 @@ Additions and disabled IDs can also be configured in TOML. A
 [live data source](research.md#live-data-sources) is code, not configuration; see
 below.
 
-## Data sources and widgets
+## Data sources
 
 !!! warning "New interface"
-    `sourcesift.extend` is new and may change before it is opened to installed
-    plugins. Extensions are trusted Python running in your process: unlike the
-    model, they can do anything your program can.
+    `sourcesift.source` is new and may change before it is opened to installed
+    plugins. A data source is trusted Python running in your process: unlike the
+    model, it can do anything your program can.
 
 A data source is an async function with typed parameters. It returns evidence for
-the model to cite and, optionally, the same data as one or more `Table` values. A
-widget is a function from a table and typed options to a view: a `Figure` (any
-[Plotly](https://plotly.com/javascript/) figure, as plain `data` and `layout`), a
-`TableView`, or a `StatView`. Neither refers to the other, so any widget can show
-any source's table whose columns fit its options.
+the model to cite and, optionally, the same data as one or more `Table` values.
+The model can then draw a [figure](research.md#figures) from any of those tables.
 
 ```python
 from pydantic import BaseModel, Field
-from sourcesift import (
-    Figure,
-    Record,
-    SourceResult,
-    SourceSift,
-    Table,
-    source,
-    widget,
-)
+from sourcesift import Record, SourceResult, SourceSift, Table, render_png, source
 
 
 class RepoParams(BaseModel):
@@ -142,56 +131,32 @@ async def repo_stats(params, context):
     return SourceResult([Record(params.repo, page.url, text, page)], [table])
 
 
-class GaugeOptions(BaseModel):
-    column: str = Field(description="Numeric column to show.")
-
-
-@widget(
-    id="gauge",
-    description="The latest value of one column as a dial.",
-    options=GaugeOptions,
-)
-def gauge(table, options):
-    if table.kind(options.column) != "number":
-        raise ValueError(f"Column {options.column!r} is not numeric.")
-    value = table.values(options.column)[-1]
-    return Figure(
-        title=table.name,
-        data=[{"type": "indicator", "mode": "gauge+number", "value": value}],
-    )
-
-
 app = SourceSift()
 app.register(repo_stats)
-app.register(gauge)
 result = app.run_sync("How many open issues does example/project have? Chart it.")
-for block in result.blocks:
-    print(block.widget, block.view.title, block.evidence_ids)
+for figure in result.figures:
+    print(figure.id, figure.kind, figure.title, figure.evidence_ids)
+    open(f"{figure.id}.png", "wb").write(render_png(figure))
 ```
 
-- With no widget of your own, the built-in `chart`, `table`, `stats`, and `map`
-  widgets already work on any table a source returns.
 - A column's kind (`text`, `number`, `time`) is worked out from its values. Declare
   `kind="time"` for ISO 8601 dates or date-times, and give a `unit` where one
   applies; charts use it for axis labels.
-- A widget raises `ValueError` with a short message when its options do not fit
-  the table. The message goes to the model, which can correct its request.
-- A figure carries structure only. The page applies its own colours and fonts.
+- A `Figure` holds the recipe the model chose (kind and columns) and the table it
+  is drawn from. `render_png(figure)` returns the picture as PNG bytes.
 - `context.get(url)` is the only network access a source is given. It applies the
   same address checks, robots rules, size limits, and request budget as feeds.
   `context.now`, `context.since`, and `context.limit` carry the clock, the start of
   the date window, and the per-source item limit.
-- Field descriptions on the parameter and option models are what the model sees.
+- Field descriptions on the parameter model are what the model sees.
 - `api_hosts=("api.example.com",)` on `@source` skips the
   [robots check](research.md#robots-rules-and-public-apis) for those hosts only.
   Use it for a documented public API whose terms allow programmatic use.
 - Raise `sourcesift.retrieval.urls.RetrievalError` for a failure the user should
   see as a note.
-- A `Block` holds the view, the options the model chose, and the table it was
-  drawn from.
 
-Loading extension files from configuration and discovering installed plugins are
-planned; see the [design](design.md#11-proposal-web-app-typed-data-and-display-blocks).
+Loading source files from configuration and discovering installed plugins are
+planned.
 
 Catch `ConfigurationError` or `InputError` to correct local input, and `ModelError`
 for timeout, provider, or unusable-output failures. All derive from
@@ -204,25 +169,31 @@ citation-validation repair is allowed within the model-request budget. Individua
 retrieval failures appear as limitations; an entirely unsuccessful research run
 returns an explicit inability to verify current information.
 
-## Reports
+## Artifacts
 
 ```python
-from sourcesift import SourceSift, render_report, save_report
+from sourcesift import SourceSift, artifact_from_answer, render_qmd, save_artifacts
 
 app = SourceSift()
-prompt = "Check tech and AI this week"
-result = app.run_sync(prompt)
-text = render_report(prompt, result)  # Markdown string
-path = save_report(prompt, result, app.settings.reports.directory)
+prompt = "Write a briefing on tech and AI this week"
+result = app.run_sync(prompt, artifacts=True)
+artifacts = result.artifacts or (artifact_from_answer(prompt, result),)
+print(render_qmd(artifacts[0]))  # the Quarto document as a string
+paths = save_artifacts("briefing", artifacts, result.references, result.figures)
 ```
 
-`render_report` returns the request, answer, visuals, references, and notes as
-Markdown. Tables and headline figures are written out; a chart or map is replaced
-by the rows it was drawn from unless you supply a picture of it.
-`save_report(..., images={0: png_bytes})` saves a PNG for the visual at that
-position in `result.blocks` beside the report and links it. `save_report` writes
-a new file, never replacing an existing one, and returns the path. A `None` directory means the per-user default described in
-[configuration](configuration.md#reports).
+`artifacts=True` gives the model the [`write_artifact`](research.md#artifacts)
+tool for this request; `Result.artifacts` holds what it wrote. An `Artifact` has
+an `id` (`A1`), `title`, `markdown` with `[S1]` citations and placed figures,
+`notes`, a `version`, and `updated_at`. `artifact_from_answer` turns a finished
+answer into one.
+
+`save_artifacts(directory, artifacts, references, figures)` writes the
+[artifact files](research.md#artifact-files) into that folder, replacing the
+files of an earlier call, and returns the `.qmd` paths.
+`sourcesift.export.export_artifact(path, "pdf")` renders a saved file to `html`,
+`pdf`, `docx`, or `slides` when Quarto is installed, and raises `InputError`
+when it is not; `export_formats()` reports what is available.
 
 ## Interactive sessions
 
@@ -246,10 +217,20 @@ those IDs until `reset()`.
 call with its outcome. During a session turn the same steps arrive as `step`
 events, once when a step starts and once when it finishes.
 
+In a session the model can always write artifacts. `session.artifacts` and
+`session.figures` hold everything made so far, `session.keep_answer()` turns the
+latest answer into an artifact (pass a turn index for an earlier one), and
+`session.save_artifacts(directory)` writes them all as files.
+
 Sessions are independent objects, kept in memory by default. `app.session(save=True)`
-writes the conversation to a file after each completed turn, `session.saved_path`
-reports where, and `app.session(resume=True)` continues the most recently saved
-one; see [saving conversations](web.md). `session.turns` returns completed
+saves the conversation in its own folder after each completed turn, with its
+artifacts as files in `session.artifacts_path`; `session.id` names it and
+`session.saved_path` reports where it is. `app.conversations()` lists saved
+conversations, newest first, as `ConversationInfo` values (`id`, `title`,
+`updated_at`, `turns`, `artifacts`). `app.session(resume="<id>")` reopens one
+and `app.session(resume=True)` the most recent. `session.rename("…")` sets the
+title and `app.delete_conversation("<id>")` removes the folder. See
+[saved conversations](web.md#saved-conversations). `session.turns` returns completed
 prompt/result pairs and `session.context` shows the context snapshot. Settings and
 source registration are snapshotted at creation; create a new session to change them.
 Additional `files=` or `Request.context` on a turn become part of its history.
