@@ -4,7 +4,7 @@ An artifact is Markdown with ``[S1]`` citations and figures placed by ID. The
 model writes it through one tool and has no file tool: the application checks
 the text, then writes the files itself. A saved artifact is a ``.qmd`` file with
 no executable code, a ``references.json`` bibliography built from the retrieved
-evidence, and a ``figures`` folder of pictures with the recipe for each.
+evidence, a ``references.csl`` style that numbers citations, and a ``figures`` folder of pictures with the recipe for each.
 """
 
 import json
@@ -36,6 +36,40 @@ _FORBIDDEN = (
     (re.compile(r"\{="), "raw markup blocks ({=html}, {=latex}, ...)"),
 )  # fmt: skip
 MAX_ARTIFACTS = 12
+# How an exported file prints citations: [1] in the text and a numbered list in
+# the order first cited, matching the numbered chips in the web app.
+REFERENCE_STYLE = """<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0" default-locale="en-US">
+  <info>
+    <title>SourceSift numbered references</title>
+    <id>https://github.com/jakeryderv/sourcesift/numbered-references</id>
+    <updated>2026-11-25T00:00:00+00:00</updated>
+  </info>
+  <citation collapse="citation-number">
+    <sort>
+      <key variable="citation-number"/>
+    </sort>
+    <layout prefix="[" suffix="]" delimiter=", ">
+      <text variable="citation-number"/>
+    </layout>
+  </citation>
+  <bibliography second-field-align="flush" entry-spacing="0">
+    <layout suffix=".">
+      <text variable="citation-number" prefix="[" suffix="]"/>
+      <group delimiter=". ">
+        <names variable="author">
+          <name/>
+        </names>
+        <text variable="title"/>
+        <text variable="container-title"/>
+        <date variable="issued" form="text" prefix="Published "/>
+        <text variable="URL"/>
+        <date variable="accessed" form="text" prefix="Retrieved "/>
+      </group>
+    </layout>
+  </bibliography>
+</style>
+"""
 EXPORT_FORMATS = {
     # name -> (Quarto --to value, file extension, label)
     "html": ("html", "html", "Web page"),
@@ -179,7 +213,11 @@ def render_qmd(artifact: Artifact, *, references: bool = True) -> str:
         "from: markdown-raw_html-raw_tex-raw_attribute",
     ]
     if references:
-        header += ["bibliography: references.json", "link-citations: true"]
+        header += [
+            "bibliography: references.json",
+            "csl: references.csl",
+            "link-citations: true",
+        ]
     header += [
         "format:",
         "  html:",
@@ -221,7 +259,7 @@ def save_artifacts(
     """Write artifacts, their bibliography, and their figures into one folder.
 
     The folder gets ``<ID>-<title>.qmd`` for each artifact, ``references.json``
-    for the references any of them cites, and ``figures/<ID>.png`` with
+    for the references any of them cites with ``references.csl`` to number them, and ``figures/<ID>.png`` with
     ``figures/<ID>.json`` (the recipe and rows) for each figure any of them
     places. Files from an earlier call are replaced, so saving again after a
     revision updates the folder. Returns the artifact files' paths.
@@ -250,6 +288,7 @@ def save_artifacts(
                 [csl_reference(ref) for ref in used], ensure_ascii=False, indent=2
             )
             _write(folder / "references.json", listing.encode())
+            _write(folder / "references.csl", REFERENCE_STYLE.encode())
         if used_figures:
             (folder / "figures").mkdir(exist_ok=True)
         for figure in used_figures:
