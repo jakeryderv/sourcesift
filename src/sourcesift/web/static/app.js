@@ -234,12 +234,21 @@ function setArtifacts(artifacts) {
   button.textContent = artifacts.length > 1 ? `Artifacts (${artifacts.length})` : "Artifact";
   // Keep an open artifact current after a revision.
   if (state.panel === "artifact") showArtifact(state.shown);
+  // A card for a version that has since been replaced says so.
+  for (const card of document.querySelectorAll(".artifact-card[data-version]")) {
+    const current = artifacts.find((item) => item.id === card.dataset.artifact);
+    const replaced = current && current.version > Number(card.dataset.version);
+    card.lastChild.textContent = replaced ? `Open version ${card.dataset.version}` : "Open";
+  }
 }
 
-function showArtifact(id) {
-  const artifact = state.artifacts.find((item) => item.id === id) ?? state.artifacts.at(-1);
-  if (!artifact) { closePanel(); return; }
-  state.shown = artifact.id;
+// `version` shows a version that a later revision replaced; the latest otherwise.
+function showArtifact(id, version) {
+  const latest = state.artifacts.find((item) => item.id === id) ?? state.artifacts.at(-1);
+  if (!latest) { closePanel(); return; }
+  state.shown = latest.id;
+  const artifact = latest.earlier.find((item) => item.version === Number(version)) ?? latest;
+  const old = artifact !== latest;
   openPanel("artifact", artifact.title, (body, tools) => {
     if (state.artifacts.length > 1) {
       const pick = el("select", { "aria-label": "Choose an artifact" });
@@ -249,6 +258,17 @@ function showArtifact(id) {
         pick.append(option);
       }
       pick.addEventListener("change", () => showArtifact(pick.value));
+      tools.append(pick);
+    }
+    if (latest.earlier.length) {
+      const pick = el("select", { "aria-label": "Choose a version" });
+      for (const item of [...latest.earlier, latest].reverse()) {
+        const label = `Version ${item.version}${item === latest ? " (latest)" : ""}`;
+        const option = el("option", { value: String(item.version) }, label);
+        option.selected = item === artifact;
+        pick.append(option);
+      }
+      pick.addEventListener("change", () => showArtifact(latest.id, pick.value));
       tools.append(pick);
     }
     const act = async (button, work) => {
@@ -265,8 +285,10 @@ function showArtifact(id) {
     const save = el("button", { type: "button", class: "ghost" }, "Download");
     save.title = "A zip with the Quarto file, its references, and its figures";
     save.addEventListener("click", () => act(save, async () => { await download(artifact, "zip"); toast("Downloaded"); }));
-    tools.append(copy, save);
-    if (state.formats.length) {
+    tools.append(copy);
+    // Files are made from the latest version only.
+    if (!old) tools.append(save);
+    if (state.formats.length && !old) {
       const pick = el("select", { "aria-label": "Export with Quarto" });
       pick.append(el("option", { value: "" }, "Export as…"));
       for (const format of state.formats) pick.append(el("option", { value: format.id }, format.label));
@@ -280,7 +302,8 @@ function showArtifact(id) {
       tools.append(pick);
     }
 
-    const meta = [`Version ${artifact.version}`, `updated ${formatWhen(artifact.updated_at)}`];
+    const meta = [`Version ${artifact.version}`, `${old ? "written" : "updated"} ${formatWhen(artifact.updated_at)}`];
+    if (old) meta.push(`replaced by version ${latest.version}`);
     body.append(el("p", { class: "muted small" }, meta.join(" · ")));
     const page = el("article", { class: "answer document" });
     setRendered(page, artifact.html);
@@ -308,7 +331,7 @@ function fillTurn(node, turn, index) {
   setRendered(answer, turn.answer_html);
   node.append(answer);
   for (const artifact of result.artifacts) {
-    const card = el("button", { type: "button", class: "artifact-card", "data-artifact": artifact.id });
+    const card = el("button", { type: "button", class: "artifact-card", "data-artifact": artifact.id, "data-version": String(artifact.version) });
     card.append(el("span", { class: "artifact-kind" }, artifact.version > 1 ? "Revised artifact" : "Artifact"), el("strong", {}, artifact.title), el("span", { class: "muted" }, "Open"));
     node.append(card);
   }
@@ -578,7 +601,7 @@ document.addEventListener("click", (event) => {
   if (chip?.closest("#panel")) flash($("panel-body"), chip.dataset.cite);
   else if (chip) showEvidence(chip.dataset.cite);
   const card = event.target.closest("[data-artifact]");
-  if (card) showArtifact(card.dataset.artifact);
+  if (card) showArtifact(card.dataset.artifact, card.dataset.version);
   const suggestion = event.target.closest(".suggestion");
   if (suggestion) send(suggestion.textContent);
 });

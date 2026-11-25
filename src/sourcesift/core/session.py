@@ -123,6 +123,26 @@ class Session:
         """The current version of every artifact in this conversation."""
         return tuple(self._state.artifacts.values())
 
+    def artifact_versions(self, artifact_id: str) -> tuple[Artifact, ...]:
+        """Every version of an artifact that this conversation still holds, oldest first.
+
+        Each turn's result keeps the artifact as that turn wrote it, so a
+        revision does not lose the text it replaced. An answer kept as an
+        artifact and revised later has no stored first version: it is that
+        turn's answer.
+        """
+        found = {
+            item.version: item
+            for _, result in self._turns
+            for item in result.artifacts
+            if item.id == artifact_id
+        }
+        current = self._state.artifacts.get(artifact_id)
+        if current is None:
+            raise InputError("There is no such artifact.")
+        found[current.version] = current
+        return tuple(found[version] for version in sorted(found))
+
     def keep_answer(self, turn: int = -1) -> Artifact:
         """Turn a completed answer into an artifact and return it.
 

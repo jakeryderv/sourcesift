@@ -57,8 +57,10 @@ the source list, and closes with **Close**.
 An artifact is a document that lasts beyond one answer: a briefing, a report, a
 comparison. Ask for one ("write a report on…") and the model writes it; ask for
 a change ("make it shorter") and the model revises the same artifact, which
-gains a version number. An artifact can cite evidence and place figures, as an
-answer can. A conversation holds up to 12.
+gains a version number. Earlier versions are kept: the pane's version menu shows
+any of them, and the card in the chat opens the version that turn wrote. Copy
+works on the version shown; Download and Export use the latest. An artifact can
+cite evidence and place figures, as an answer can. A conversation holds up to 12.
 
 The pane shows the artifact with its notes and the references it cites, and
 offers:

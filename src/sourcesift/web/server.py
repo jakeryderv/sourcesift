@@ -36,7 +36,7 @@ from sourcesift.data import Figure
 from sourcesift.errors import InputError, SourceSiftError
 from sourcesift.export import export_artifact, export_formats
 from sourcesift.figures import render_png
-from sourcesift.models import Result, SessionEvent
+from sourcesift.models import Artifact, Result, SessionEvent
 from sourcesift.sources import Source
 
 MAX_SESSIONS = 8
@@ -153,9 +153,16 @@ def _sources(session: Session) -> list[dict[str, Any]]:
 
 
 def _artifacts(session: Session) -> list[dict[str, Any]]:
+    """Each artifact as it is now, with the versions a revision replaced."""
+
+    def shown(item: Artifact) -> dict[str, Any]:
+        return item.model_dump(mode="json") | {
+            "html": render_markdown(item.markdown, session.figures)
+        }
+
     return [
-        item.model_dump(mode="json")
-        | {"html": render_markdown(item.markdown, session.figures)}
+        shown(item)
+        | {"earlier": [shown(old) for old in session.artifact_versions(item.id)[:-1]]}
         for item in session.artifacts
     ]
 

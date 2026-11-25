@@ -219,8 +219,10 @@ events, once when a step starts and once when it finishes.
 
 In a session the model can always write artifacts. `session.artifacts` and
 `session.figures` hold everything made so far, `session.keep_answer()` turns the
-latest answer into an artifact (pass a turn index for an earlier one), and
-`session.save_artifacts(directory)` writes them all as files.
+latest answer into an artifact (pass a turn index for an earlier one),
+`session.artifact_versions("A1")` returns every version of one that a revision
+replaced along with the current one, and `session.save_artifacts(directory)`
+writes the current ones as files.
 
 Sessions are independent objects, kept in memory by default. `app.session(save=True)`
 saves the conversation in its own folder after each completed turn, with its
