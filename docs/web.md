@@ -1,11 +1,10 @@
 # Web app
 
-`ssift web` opens the research chat as a page in your browser. It runs the same
-sessions as the terminal chat and adds what a terminal cannot draw: charts,
-tables, and headline figures built from retrieved data.
+`ssift web` opens the research chat as a page in your browser. It is the
+interactive interface: a conversation with citations, plus charts, tables, and
+headline figures built from retrieved data.
 
 ```console
-$ pip install "sourcesift[web]"
 $ ssift web
 SourceSift is running at http://127.0.0.1:51023/#…
 Press Ctrl+C to stop.
@@ -20,7 +19,7 @@ The page opens in your default browser. The server stops with Ctrl+C.
 | `--file`, `-f` | Attach a context file to each conversation; repeatable |
 | `--save` | Save each conversation after every completed turn |
 | `--continue`, `-c` | Continue the most recently saved conversation |
-| `--model`, `--reasoning-effort`, `--config` | As for [`ssift chat`](cli.md) |
+| `--model`, `--reasoning-effort`, `--config` | As for [`ssift ask`](cli.md) |
 
 ## What the page does
 
@@ -70,11 +69,10 @@ The server is for one person on one computer.
   services see your network address and the area viewed. Raw HTML and images in a
   model's answer are never rendered.
 - Prompts, attached files, and retrieved text still go to the configured model
-  through OpenRouter, as in the terminal.
+  through OpenRouter, as with `ssift ask`.
 
 ## Not yet in the page
 
 Model and reasoning choices are set when starting the server, files are attached
 with `--file` rather than uploaded, and radar is the latest frame only, shown at
-regional zoom and wider, with no animation or forecast. The terminal chat
-remains available as `ssift chat`.
+regional zoom and wider, with no animation or forecast.

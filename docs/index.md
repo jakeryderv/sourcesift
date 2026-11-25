@@ -1,6 +1,6 @@
 # SourceSift
 
-SourceSift is a terminal research assistant, Python SDK, and CLI for “check news,” “check tech,” and research
+SourceSift is a research assistant with a local web app, a Python SDK, and a CLI for “check news,” “check tech,” and research
 with explicit context. The model selects from registered source descriptions;
 Python retrieves and normalizes evidence, preserves provenance, and supplies
 references for the answer.
@@ -9,8 +9,7 @@ Phases 1 and 2 implement supplied-text analysis and bounded research across 31
 sources covering US national and world news, technology, AI, science, health,
 business, marketing, finance, and US policy and government.
 See [research and sources](research.md) for the catalog, freshness rules, and limits.
-Interactive sessions are available through `ssift chat`; see the [chat guide](chat.md).
-`ssift web` opens the same chat as a local [web page](web.md) that draws charts and tables.
+Conversations run in `ssift web`, a local [web page](web.md); `ssift ask` answers one request from a script or pipe.
 Plugin discovery and richer recommendations remain later work.
 
 Start with the [CLI guide](cli.md), [Python SDK](sdk.md), and

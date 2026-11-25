@@ -283,7 +283,7 @@ async def run_agent(
         and state.size_bytes() + len(payload.encode())
         > settings.limits.max_session_bytes
     ):
-        raise InputError("Session context limit reached; start a new session (/new).")
+        raise InputError("Session context limit reached; start a new conversation.")
 
     running: dict[str, Step] = {}
     reported: set[str] = set()
@@ -475,7 +475,7 @@ async def run_agent(
         )
         if candidate.size_bytes() > settings.limits.max_session_bytes:
             raise InputError(
-                "This turn exceeds the session context limit; start a new session (/new) or reduce the request."
+                "This turn exceeds the session context limit; start a new conversation or reduce the request."
             )
         state.messages = candidate.messages
         state.evidence = candidate.evidence

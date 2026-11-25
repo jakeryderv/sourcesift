@@ -1,4 +1,4 @@
-"""Conversations shared by terminal and Python clients; in memory unless saved."""
+"""Conversations shared by the web app and Python clients; in memory unless saved."""
 
 from collections.abc import Iterable, Sequence
 from copy import deepcopy
@@ -211,7 +211,7 @@ class Session:
         if self.busy:
             raise InputError("A turn is already running in this session.")
         if len(self._turns) >= self.settings.limits.max_session_turns:
-            raise InputError("Session turn limit reached; start a new session (/new).")
+            raise InputError("Session turn limit reached; start a new conversation.")
         self._busy = True
         try:
             try:

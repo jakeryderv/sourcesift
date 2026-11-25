@@ -440,7 +440,7 @@ Expected behavior:
 
 ### UC-09 — Interactive Research Follow-ups
 
-Start `ssift chat`, with optional personal Markdown guidance, then ask:
+Start `ssift web`, with optional personal Markdown guidance, then ask:
 
 1. “Check tech and AI.”
 2. “Which of those matters for my project?”
@@ -451,7 +451,7 @@ The conversation retains evidence, article identities, citations, and limitation
 Retained evidence has retrieval timestamps and is not presented as freshly checked.
 The user can cancel a turn, inspect loaded context, or start a new session. A new
 session reloads configured context; exiting discards the conversation. See the
-[chat guide](chat.md). Saved conversations and resume remain future work.
+[web app guide](web.md).
 
 ## 7. Agent Responsibilities
 

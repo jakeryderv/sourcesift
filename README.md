@@ -1,6 +1,6 @@
 # SourceSift
 
-SourceSift is a research agent with terminal chat, a Python SDK, and a one-off CLI. Requests such as
+SourceSift is a research agent with a local web app, a Python SDK, and a one-off CLI. Requests such as
 “check news” or “check tech” select registered sources using descriptions, coverage
 metadata, and optional user context, then return answers with evidence references.
 
@@ -21,7 +21,7 @@ The Markdown documents directly under `docs/` are the maintained project referen
   should behave.
 - [Design](docs/design.md): architecture, proposed interfaces, and technical decisions.
 - [Roadmap](docs/roadmap.md): implementation order, progress, and completion criteria.
-- [Interactive chat](docs/chat.md), [CLI guide](docs/cli.md), [Python SDK](docs/sdk.md), and
+- [Web app](docs/web.md), [CLI guide](docs/cli.md), [Python SDK](docs/sdk.md), and
   [configuration](docs/configuration.md): current usage and defaults.
 - [Research and sources](docs/research.md): retrieval, evidence, and evaluation contracts.
 - [API reference](docs/reference/index.md): source-based reference rendered by MkDocs.
@@ -42,7 +42,7 @@ Set `OPENROUTER_API_KEY` securely in your environment, then select a model:
 ```sh
 export SOURCESIFT_MODEL=openai/gpt-6.1-sol
 export SOURCESIFT_REASONING_EFFORT=medium
-ssift chat
+ssift web                                      # chat in the browser
 ssift ask "Check news"
 ssift ask "Check tech and AI"
 ssift ask "What is Hacker News discussing right now?"
@@ -50,9 +50,8 @@ ssift ask "Check world news" --report          # also saves a Markdown report
 ssift ask "Check news" --json | jq .references # one JSON object for other programs
 ssift ask "Summarize this document" --file report.md
 cat report.md | ssift ask "Summarize this" > summary.md
-ssift chat --save                              # keep this conversation
-ssift chat --continue                          # reopen the latest saved one
-ssift web                                      # chat in the browser, with charts; needs "sourcesift[web]"
+ssift web --save                               # keep this conversation
+ssift web --continue                           # reopen the latest saved one
 ```
 
 ```python
@@ -64,14 +63,9 @@ print(result.answer)
 # Inside an async application: result = await app.run(...)
 ```
 
-In chat, use **Enter** to send, **Shift+Enter** for a newline (**Ctrl+J** as a
-fallback), and **Esc** to cancel. Use `/new` for a new session, `/context` to inspect
-context, `/model` for session settings, and `/help` for commands. Type `/` for a
-fuzzy command picker or `@` to attach a workspace file. Accept suggestions with
-Tab/Enter, then press Enter again to submit. Bare `ssift` opens chat in a terminal.
-Conversations stay in memory unless started with `--save`; `--continue` reopens the
-latest saved one. Follow-ups retain evidence and citations. See the
-[chat guide](docs/chat.md).
+In the web app, **Enter** sends and **Shift+Enter** adds a line. Conversations stay
+in memory unless started with `--save`; `--continue` reopens the latest saved one.
+Follow-ups retain evidence and citations. See the [web app guide](docs/web.md).
 
 Context and retrieved evidence are sent to the selected model through OpenRouter.
 No model is selected implicitly. Research requires a tool-capable model. See the

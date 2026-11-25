@@ -3,7 +3,6 @@
 import json
 import os
 import stat
-import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from email.utils import format_datetime
@@ -11,12 +10,10 @@ from email.utils import format_datetime
 import pytest
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, UserPromptPart
 from pydantic_ai.models.function import FunctionModel
-from textual.widgets import Markdown, Static
 
 from sourcesift import AgentSettings, InputError, Settings, SourceSift, load_settings
 from sourcesift.agents import runtime
 from sourcesift.retrieval.http import Fetcher, Page
-from sourcesift.tui import ChatApp
 
 
 @pytest.fixture
@@ -114,7 +111,7 @@ async def test_save_and_continue_keep_history_evidence_and_context(
     assert resumed.saved_path == path and len(list(path.parent.glob("*.json"))) == 1
     assert len(json.loads(path.read_text(encoding="utf-8"))["turns"]) == 2
 
-    # /new starts a separate file and leaves the earlier conversation in place.
+    # A reset starts a separate file and leaves the earlier conversation in place.
     resumed.reset()
     assert resumed.saved_path is None
     await resumed.run("Check news")
@@ -177,48 +174,3 @@ def test_config_enables_saving_and_resolves_the_directory(tmp_path):
     assert app.session()._store is not None
     assert app.session(save=False)._store is None
     assert not Settings().sessions.save
-
-
-def test_chat_flags_reach_the_session(monkeypatch, settings):
-    from sourcesift import cli
-
-    calls = []
-
-    class FakeApp:
-        def __init__(self, session, *, debug):
-            calls.append(session)
-
-        def run(self):
-            pass
-
-    def session(self, **kwargs):
-        calls.append(kwargs)
-        return "session"
-
-    monkeypatch.setattr("sourcesift.tui.ChatApp", FakeApp)
-    monkeypatch.setattr(cli.SourceSift, "session", session)
-    monkeypatch.setattr(cli, "load_settings", lambda *args, **kwargs: settings)
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
-    for arguments, expected in [
-        ([], {"files": (), "save": None, "resume": False}),
-        (["--save"], {"files": (), "save": True, "resume": False}),
-        (["--continue"], {"files": (), "save": None, "resume": True}),
-        (["-c"], {"files": (), "save": None, "resume": True}),
-    ]:
-        calls.clear()
-        monkeypatch.setattr(sys, "argv", ["ssift", "chat", *arguments])
-        cli.main()
-        assert calls == [expected, "session"]
-
-
-@pytest.mark.asyncio
-async def test_continued_chat_shows_earlier_turns(settings, research_model):
-    session = SourceSift(settings).session(save=True)
-    await session.run("Check news")
-    app = ChatApp(SourceSift(settings).session(resume=True))
-    async with app.run_test(size=(100, 30)):
-        shown = "\n".join(str(widget.content) for widget in app.query(Static))
-        assert "Check news" in shown and "Continued saved conversation" in shown
-        assert "[S1] Library story" in shown
-        assert len(app.query(Markdown)) == 1

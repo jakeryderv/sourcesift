@@ -33,7 +33,7 @@ from sourcesift.models import Result, SessionEvent
 from sourcesift.reports import save_report
 from sourcesift.retrieval.http import Fetcher
 from sourcesift.retrieval.urls import RetrievalError
-from sourcesift.tui_panels import source_kind
+from sourcesift.sources import Source
 
 MAX_SESSIONS = 8
 MAX_BODY_BYTES = 1_048_576
@@ -121,6 +121,13 @@ def _turn(prompt: str, result: Result) -> dict[str, Any]:
         "result": result.model_dump(mode="json"),
         "answer_html": render_markdown(result.answer),
     }
+
+
+def source_kind(source: Source) -> str:
+    """How a source is read, in the words the catalog documentation uses."""
+    if "query" in source.capabilities:
+        return "live data"
+    return "feed and articles" if "article" in source.capabilities else "feed only"
 
 
 def _sources(session: Session) -> list[dict[str, Any]]:

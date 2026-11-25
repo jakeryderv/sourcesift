@@ -285,7 +285,7 @@ other files and web content stay research material. Context is loaded once per
 session; reset reloads it atomically. Selected per-turn attachments are read and
 validated at submission, with relative path labels, then passed as ordinary
 `Request.context` documents to the same session runtime. UI discovery and keyboard
-logic remain outside the core. See [chat](chat.md) for the user-facing contract.
+logic remain outside the core. See the [web app guide](web.md) for the user-facing contract.
 
 ## 7. Grounding, Failure Handling, and Limits
 
