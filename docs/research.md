@@ -65,6 +65,7 @@ records are cited like any other evidence, with the kind `api record`.
 | `hacker-news` | `query`: keywords, or empty for the current front page | Story titles, points, comment counts, and submitted links; keyword results are limited to the date window | The stories with points, comments, and submitter |
 | `weather` | `place`: a city or town, optionally with a region or country; `days` of forecast (1 to 7, default 3); `units`: `metric` or `imperial` | Current conditions and the daily forecast for the place it resolved, with local observation time | Current conditions, the location, hourly temperature, and the daily forecast |
 | `us-treasury` | `dataset`: `debt`, `interest-rates`, or `exchange-rates`; `days` of history for `debt` (7 to 3650, default 30) | The latest published figures with their record date; for `debt`, also the range of the history retrieved | `debt`: the three debt figures by day. Others: name and value |
+| `bls` | `series`: `unemployment-rate`, `labor-force-participation`, `nonfarm-payrolls`, `average-hourly-earnings`, `consumer-prices`, or `core-consumer-prices`; `years` of history (1 to 9, default 5) | The latest monthly value and the past year of values, with preliminary figures marked | The series by month; earnings and price series add the 12-month percent change |
 
 Each is defined in Python with a parameter model. Parameters are validated before
 any request is made; invalid ones are returned to the model to correct. A source
@@ -75,15 +76,19 @@ forecast models (CC BY 4.0, free for non-commercial use); it is not an official
 warning or alert service. Hacker News points and comments measure attention, not
 accuracy. A Treasury record date is a
 reporting period rather than a publication time, so those records are not
-filtered by the date window.
+filtered by the date window; the same holds for a Bureau of Labor Statistics
+reference month. BLS figures come from its public API without a key, which
+allows about 25 requests a day from one address. The 12-month change in a BLS
+price or earnings series is computed by SourceSift from the values retrieved.
 
 ### Robots rules and public APIs
 
 A `robots.txt` file tells crawlers which pages not to collect. Some public data
 APIs disallow all crawlers on their API host while documenting that host for
 programs to call. A data source can therefore declare the API hosts it calls, and
-requests to exactly those hosts skip the robots check. Only the weather source
-does (`api.open-meteo.com` and `geocoding-api.open-meteo.com`). Feeds, articles,
+requests to exactly those hosts skip the robots check. The weather source
+does (`api.open-meteo.com` and `geocoding-api.open-meteo.com`), and so does the
+Bureau of Labor Statistics source (`api.bls.gov`). Feeds, articles,
 discovery, and every other host are still checked, and address checks, size
 limits, timeouts, and the request budget apply to every request.
 

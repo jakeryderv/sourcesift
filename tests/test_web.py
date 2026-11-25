@@ -117,7 +117,7 @@ def test_turn_streams_progress_then_a_result_with_a_figure(served):
     client, fetched = served
     session = client.post("/api/sessions", json={}, headers=AUTH).json()
     assert session["model"] == "example/test" and session["turns"] == []
-    assert len(session["sources"]) == 32
+    assert len(session["sources"]) == 33
     assert {"id", "name", "kind", "description", "enabled"} <= set(
         session["sources"][0]
     )

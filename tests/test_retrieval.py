@@ -222,7 +222,7 @@ def test_normalization_idempotent(query):
 
 def test_registry_settings_and_sdk_registration(tmp_path):
     registry = SourceRegistry(BUILTIN_CATALOG)
-    assert len(registry.list()) == 32 and len(BUILTIN_SOURCES) == 29
+    assert len(registry.list()) == 33 and len(BUILTIN_SOURCES) == 29
     # Publishers that refuse article retrieval are registered as summaries only.
     assert {s.id for s in registry.list() if s.capabilities == ("feed",)} == {
         "al-jazeera",
@@ -233,7 +233,7 @@ def test_registry_settings_and_sdk_registration(tmp_path):
     live = {s.id for s in registry.list() if "query" in s.capabilities}
     assert (
         live
-        == {"hacker-news", "us-treasury", "weather"}
+        == {"hacker-news", "us-treasury", "bls", "weather"}
         == set(builtin_toolkit().sources)
     )
     assert all(
@@ -1516,3 +1516,105 @@ def test_reading_an_article_already_listed_is_a_finished_step():
         "failed",
         "Nothing new",
     )
+
+
+def bls_fetcher(body):
+    fetcher = AsyncMock()
+    calls = []
+
+    async def get(url, **options):
+        calls.append((url, options))
+        return page(json.dumps(body), url, "application/json")
+
+    fetcher.get.side_effect = get
+    return fetcher, calls
+
+
+def bls_months(*values):
+    return {
+        "status": "REQUEST_SUCCEEDED",
+        "Results": {
+            "series": [
+                {
+                    "data": [
+                        {
+                            "year": year,
+                            "period": period,
+                            "value": value,
+                            "footnotes": notes,
+                        }
+                        for year, period, value, notes in values
+                    ]
+                }
+            ]
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_bls_returns_a_monthly_series_and_a_computed_change():
+    from sourcesift.builtin import bls
+
+    registry = SourceRegistry([bls.source])
+    body = bls_months(
+        ("2026", "M09", "4.2", [{"code": "P", "text": "preliminary"}]),
+        ("2026", "M08", "4.1", [{}]),
+        ("2025", "M13", "4.0", [{}]),  # an annual average, not a month
+        ("2025", "M09", "bad", [{}]),
+    )
+    fetcher, calls = bls_fetcher(body)
+    run = Research(Settings(), registry, fetcher, "x", now=NOW)
+    reply: Any = await run.query_source("bls", {"series": "unemployment-rate"})
+    url, options = calls[0]
+    assert url == (
+        "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000"
+        "?startyear=2021&endyear=2026"
+    )
+    # The documented API host is called although its robots.txt bars crawlers.
+    assert options == {"robots": False}
+    (evidence,) = reply["evidence"]
+    assert (
+        evidence["title"] == "US unemployment rate, seasonally adjusted (as of 2026-09)"
+    )
+    assert "Latest: 2026-09: 4.2% (preliminary)." in evidence["text"]
+    assert evidence["published_at"] is None
+    (table,) = run.datasets["S1"].tables
+    assert table.rows == (("2026-08-01", 4.1), ("2026-09-01", 4.2))
+    assert [c.name for c in table.columns] == ["Month", "Unemployment rate"]
+
+    # A price index adds the change from the same month a year earlier, and
+    # asks for one more year so the first month shown has one.
+    prices = bls_months(
+        ("2026", "M02", "330", [{}]),
+        ("2026", "M01", "324.0", [{}]),
+        ("2025", "M01", "300.0", [{}]),
+    )
+    fetcher, calls = bls_fetcher(prices)
+    run = Research(Settings(), registry, fetcher, "x", now=NOW)
+    second: Any = await run.query_source(
+        "bls", {"series": "consumer-prices", "years": 1}
+    )
+    assert "startyear=2024&endyear=2026" in calls[0][0]
+    (table,) = run.datasets["S1"].tables
+    assert table.rows == (
+        ("2025-01-01", 300.0, None),
+        ("2026-01-01", 324.0, 8.0),
+        ("2026-02-01", 330.0, None),
+    )
+    assert "2026-01: 324 (+8.00% from a year earlier)" in second["evidence"][0]["text"]
+    assert table.columns[2].name == "12-month change" and table.columns[2].unit == "%"
+
+    for broken, problem in (
+        (
+            {"status": "REQUEST_NOT_PROCESSED", "message": ["daily threshold reached"]},
+            "refused the request: daily threshold",
+        ),
+        (bls_months(), "no monthly values"),
+    ):
+        fetcher, _ = bls_fetcher(broken)
+        failed = Research(Settings(), registry, fetcher, "x", now=NOW)
+        refused: Any = await failed.query_source("bls", {"series": "nonfarm-payrolls"})
+        assert refused["evidence"] == []
+        assert problem in " ".join(refused["limitations"])
+    invalid = await failed.query_source("bls", {"series": "gdp"})
+    assert "error" in invalid or invalid["limitations"]
