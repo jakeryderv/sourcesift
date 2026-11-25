@@ -8,12 +8,16 @@ per-launch token and, when the browser sends one, a matching Origin.
 
 import asyncio
 import base64
+import io
 import json
 import logging
 import secrets
+import tempfile
+import zipfile
 from collections.abc import AsyncIterator, Iterable
 from html import escape
 from importlib.resources import files
+from pathlib import Path
 from typing import Any
 
 from markdown_it import MarkdownIt
@@ -25,11 +29,12 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from sourcesift.artifacts import new_artifact_folder, save_artifacts
+from sourcesift.artifacts import EXPORT_FORMATS, save_artifacts
 from sourcesift.core.application import SourceSift
 from sourcesift.core.session import Session
 from sourcesift.data import Figure
 from sourcesift.errors import InputError, SourceSiftError
+from sourcesift.export import export_artifact, export_formats
 from sourcesift.figures import render_png
 from sourcesift.models import Result, SessionEvent
 from sourcesift.sources import Source
@@ -147,6 +152,14 @@ def _sources(session: Session) -> list[dict[str, Any]]:
     ]
 
 
+def _artifacts(session: Session) -> list[dict[str, Any]]:
+    return [
+        item.model_dump(mode="json")
+        | {"html": render_markdown(item.markdown, session.figures)}
+        for item in session.artifacts
+    ]
+
+
 class Api:
     """Route handlers and the state of one launch."""
 
@@ -160,8 +173,10 @@ class Api:
     ) -> None:
         self.core = core
         self.files = tuple(files)
-        self.save = save
+        self.saving = core.settings.sessions.save if save is None else save
         self.resume = resume
+        # Open conversations by the key the page uses: a saved conversation's ID,
+        # or a random one for a conversation kept in memory.
         self.sessions: dict[str, Session] = {}
 
     async def _body(self, request: Request) -> dict[str, Any]:
@@ -173,34 +188,93 @@ class Api:
             raise InputError("The request body must be a JSON object.")
         return body
 
-    def _session(self, request: Request) -> Session:
-        session = self.sessions.get(request.path_params["id"])
+    def _open(self, key: str, session: Session) -> None:
+        self.sessions.pop(key, None)
+        self.sessions[key] = session
+        for old in list(self.sessions):
+            if len(self.sessions) <= MAX_SESSIONS:
+                break
+            if not self.sessions[old].busy and old != key:
+                del self.sessions[old]
+
+    def _find(self, key: str) -> Session:
+        session = self.sessions.get(key)
+        if session is None and self.saving:
+            # Not open in this launch: read it from the sessions directory.
+            session = self.core.session(save=True, resume=key)
+            self._open(key, session)
         if session is None:
             raise InputError("This conversation is no longer open; start a new one.")
         return session
 
-    async def create_session(self, request: Request) -> Response:
-        body = await self._body(request)
-        # Only the first conversation of a launch continues a saved one.
-        resume = self.resume and bool(body.get("resume")) and not self.sessions
-        session = self.core.session(files=self.files, save=self.save, resume=resume)
-        while len(self.sessions) >= MAX_SESSIONS:
-            self.sessions.pop(next(iter(self.sessions)))
-        key = secrets.token_urlsafe(12)
-        self.sessions[key] = session
-        return JSONResponse(self._describe(key, session))
+    def _session(self, request: Request) -> Session:
+        return self._find(request.path_params["id"])
 
     def _describe(self, key: str, session: Session) -> dict[str, Any]:
         return {
             "id": key,
+            "title": session.title,
+            "saved": session.saved_path is not None,
             "model": session.settings.agent.model,
             "turns": [_turn(prompt, result) for prompt, result in session.turns],
             "sources": _sources(session),
+            "artifacts": _artifacts(session),
         }
+
+    async def info(self, request: Request) -> Response:
+        formats = [
+            {"id": key, "label": EXPORT_FORMATS[key][2]} for key in export_formats()
+        ]
+        return JSONResponse(
+            {
+                "saving": self.saving,
+                "model": self.core.settings.agent.model,
+                "export_formats": formats,
+            }
+        )
+
+    async def conversations(self, request: Request) -> Response:
+        listed = self.core.conversations() if self.saving else []
+        return JSONResponse(
+            {"conversations": [item.model_dump(mode="json") for item in listed]}
+        )
+
+    async def create_session(self, request: Request) -> Response:
+        body = await self._body(request)
+        wanted = body.get("conversation")
+        if isinstance(wanted, str):
+            return JSONResponse(self._describe(wanted, self._find(wanted)))
+        # Only the first conversation of a launch continues the latest saved one.
+        latest = self.resume and bool(body.get("resume")) and not self.sessions
+        if latest and self.core.conversations():
+            session = self.core.session(save=True, resume=True)
+        else:
+            session = self.core.session(files=self.files, save=self.saving)
+        key = session.id or secrets.token_urlsafe(12)
+        self._open(key, session)
+        return JSONResponse(self._describe(key, session))
 
     async def get_session(self, request: Request) -> Response:
         session = self._session(request)
         return JSONResponse(self._describe(request.path_params["id"], session))
+
+    async def rename_session(self, request: Request) -> Response:
+        session = self._session(request)
+        title = (await self._body(request)).get("title")
+        if not isinstance(title, str):
+            raise InputError("Give the conversation a name.")
+        session.rename(title)
+        return JSONResponse({"id": request.path_params["id"], "title": session.title})
+
+    async def delete_session(self, request: Request) -> Response:
+        key = request.path_params["id"]
+        session = self._session(request)
+        if session.busy:
+            raise InputError("Stop the running answer before deleting.")
+        del self.sessions[key]
+        if session.saved_path is not None and session.id is not None:
+            self.core.delete_conversation(session.id)
+        return JSONResponse({"deleted": key})
 
     async def run_turn(self, request: Request) -> Response:
         session = self._session(request)
@@ -228,7 +302,16 @@ class Api:
         async def work() -> None:
             try:
                 result = await session.run(prompt, on_event=on_event)
-                queue.put_nowait({"event": "result", "turn": _turn(prompt, result)})
+                queue.put_nowait(
+                    {
+                        "event": "result",
+                        "turn": _turn(prompt, result),
+                        "title": session.title,
+                        "saved": session.saved_path is not None,
+                        "save_error": session.save_error,
+                        "artifacts": _artifacts(session),
+                    }
+                )
             except SourceSiftError as exc:
                 queue.put_nowait({"event": "error", "message": str(exc)})
             except Exception:
@@ -265,7 +348,7 @@ class Api:
         return JSONResponse({"sources": _sources(session)})
 
     async def keep_answer(self, request: Request) -> Response:
-        """Keep an answer as an artifact and save it to the artifacts directory."""
+        """Keep an answer as an artifact of this conversation."""
         session = self._session(request)
         if not session.turns:
             raise InputError("Nothing to keep yet; ask a question first.")
@@ -273,12 +356,43 @@ class Api:
         if not isinstance(index, int) or not 0 <= index < len(session.turns):
             raise InputError("There is no such answer to keep.")
         artifact = session.keep_answer(index)
-        folder = new_artifact_folder(
-            session.settings.artifacts.directory, artifact.title
-        )
-        (path,) = save_artifacts(folder, [artifact], session.evidence, session.figures)
-        return JSONResponse(
-            {"id": artifact.id, "title": artifact.title, "path": str(path)}
+        return JSONResponse({"id": artifact.id, "artifacts": _artifacts(session)})
+
+    async def download(self, request: Request) -> Response:
+        """An artifact as a file: its Quarto source, a zip with its figures and
+        references, or an export that Quarto renders."""
+        session = self._session(request)
+        wanted = request.path_params["artifact"]
+        artifact = next((a for a in session.artifacts if a.id == wanted), None)
+        if artifact is None:
+            raise InputError("There is no such artifact.")
+        kind = request.query_params.get("format", "zip")
+        if kind not in {"qmd", "zip", *EXPORT_FORMATS}:
+            raise InputError("Unknown download format.")
+
+        def build() -> tuple[str, bytes]:
+            # A private copy holding only this artifact, removed afterwards.
+            with tempfile.TemporaryDirectory(prefix="sourcesift-") as folder:
+                (path,) = save_artifacts(
+                    folder, [artifact], session.evidence, session.figures
+                )
+                if kind == "qmd":
+                    return path.name, path.read_bytes()
+                if kind == "zip":
+                    packed = io.BytesIO()
+                    with zipfile.ZipFile(packed, "w", zipfile.ZIP_DEFLATED) as bundle:
+                        for item in sorted(Path(folder).rglob("*")):
+                            if item.is_file():
+                                bundle.write(item, item.relative_to(folder).as_posix())
+                    return f"{path.stem}.zip", packed.getvalue()
+                made = export_artifact(path, kind)
+                return made.name, made.read_bytes()
+
+        name, data = await asyncio.to_thread(build)
+        return Response(
+            data,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )
 
 
@@ -298,14 +412,20 @@ def create_app(
     """Build the ASGI application for one launch."""
     api = Api(core, files=files_, save=save, resume=resume)
     static = files("sourcesift.web") / "static"
+    one = "/api/sessions/{id}"
     return Starlette(
         routes=[
+            Route("/api/info", api.info),
+            Route("/api/conversations", api.conversations),
             Route("/api/sessions", api.create_session, methods=["POST"]),
-            Route("/api/sessions/{id}", api.get_session, methods=["GET"]),
-            Route("/api/sessions/{id}/turns", api.run_turn, methods=["POST"]),
-            Route("/api/sessions/{id}/sources", api.get_sources, methods=["GET"]),
-            Route("/api/sessions/{id}/sources", api.put_sources, methods=["PUT"]),
-            Route("/api/sessions/{id}/artifacts", api.keep_answer, methods=["POST"]),
+            Route(one, api.get_session, methods=["GET"]),
+            Route(one, api.rename_session, methods=["PATCH"]),
+            Route(one, api.delete_session, methods=["DELETE"]),
+            Route(f"{one}/turns", api.run_turn, methods=["POST"]),
+            Route(f"{one}/sources", api.get_sources, methods=["GET"]),
+            Route(f"{one}/sources", api.put_sources, methods=["PUT"]),
+            Route(f"{one}/artifacts", api.keep_answer, methods=["POST"]),
+            Route(f"{one}/artifacts/{{artifact}}/download", api.download),
             Mount("/", StaticFiles(directory=str(static), html=True)),
         ],
         middleware=[Middleware(Guard, hosts=frozenset(hosts), token=token)],

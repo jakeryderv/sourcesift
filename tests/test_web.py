@@ -1,9 +1,10 @@
 """The local web server: access rules, streamed turns, sources, and artifacts."""
 
+import io
 import json
 import sys
+import zipfile
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import pytest
 from pydantic_ai.messages import ModelResponse
@@ -11,7 +12,11 @@ from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from starlette.testclient import TestClient
 
 from sourcesift import AgentSettings, ArtifactsSettings, Settings, SourceSift, cli
+from sourcesift import export as export_module
 from sourcesift.agents import runtime
+from sourcesift.core.config import SessionsSettings
+from sourcesift.errors import InputError
+from sourcesift.export import export_artifact, export_formats
 from sourcesift.retrieval.http import Fetcher, Page
 from sourcesift.web.server import create_app, render_markdown
 
@@ -62,12 +67,23 @@ def served(monkeypatch, tmp_path):
     core = SourceSift(
         Settings(
             agent=AgentSettings(model="example/test", api_key="test-key"),
-            artifacts=ArtifactsSettings(directory=str(tmp_path)),
+            artifacts=ArtifactsSettings(directory=str(tmp_path / "artifacts")),
+            sessions=SessionsSettings(directory=str(tmp_path / "sessions")),
         )
     )
-    app = create_app(core, token=TOKEN, hosts=("testserver",))
-    with TestClient(app) as client:
+
+    def launch(**options):
+        app = create_app(core, token=TOKEN, hosts=("testserver",), **options)
+        return TestClient(app)
+
+    with launch() as client:
+        client.launch, client.root = launch, tmp_path
         yield client, fetched
+
+
+def ask(client, session, prompt="front page"):
+    path = f"/api/sessions/{session['id']}/turns"
+    return events(client.post(path, json={"prompt": prompt}, headers=AUTH))
 
 
 def events(response):
@@ -158,13 +174,11 @@ def test_turn_streams_progress_then_a_result_with_a_figure(served):
         client.post(f"{base}/artifacts", json={"turn": 5}, headers=AUTH).status_code
         == 400
     )
-    saved = client.post(f"{base}/artifacts", json={"turn": 0}, headers=AUTH).json()
-    assert saved["id"] == "A1" and saved["title"] == "front page"
-    path = Path(saved["path"])
-    text = path.read_text(encoding="utf-8")
-    assert "**First** leads. [@S1]" in text and "![Points](figures/F1.png)" in text
-    assert (path.parent / "figures" / "F1.png").is_file()
-    assert (path.parent / "references.json").is_file()
+    kept = client.post(f"{base}/artifacts", json={"turn": 0}, headers=AUTH).json()
+    assert kept["id"] == "A1"
+    (artifact,) = kept["artifacts"]
+    assert artifact["title"] == "front page" and 'data-figure="F1"' in artifact["html"]
+    assert client.get(base, headers=AUTH).json()["artifacts"] == kept["artifacts"]
     large = client.post(f"{base}/turns", content=b"x" * 1_100_000, headers=AUTH)
     assert large.status_code == 403
 
@@ -224,3 +238,117 @@ def test_web_command_reports_a_busy_port(monkeypatch, capsys):
             cli.main()
     assert stopped.value.code != 0
     assert "is not available" in capsys.readouterr().err
+
+
+def test_an_artifact_downloads_as_its_file_or_a_zip_with_what_it_needs(served):
+    client, _ = served
+    session = client.post("/api/sessions", json={}, headers=AUTH).json()
+    ask(client, session)
+    base = f"/api/sessions/{session['id']}/artifacts"
+    client.post(base, json={"turn": 0}, headers=AUTH)
+    source = client.get(f"{base}/A1/download?format=qmd", headers=AUTH)
+    assert 'filename="A1-front-page.qmd"' in source.headers["content-disposition"]
+    assert "**First** leads. [@S1]" in source.text
+    assert "![Points](figures/F1.png)" in source.text
+    packed = client.get(f"{base}/A1/download", headers=AUTH)
+    assert 'filename="A1-front-page.zip"' in packed.headers["content-disposition"]
+    with zipfile.ZipFile(io.BytesIO(packed.content)) as bundle:
+        assert set(bundle.namelist()) == {
+            "A1-front-page.qmd",
+            "references.json",
+            "figures/F1.png",
+            "figures/F1.json",
+        }
+    for path in (f"{base}/A9/download", f"{base}/A1/download?format=exe"):
+        assert client.get(path, headers=AUTH).status_code == 400
+    assert client.get(f"{base}/A1/download").status_code == 403
+
+
+def test_saved_conversations_are_listed_reopened_renamed_and_deleted(served):
+    first, _ = served
+    assert first.get("/api/info", headers=AUTH).json()["saving"] is False
+    assert first.get("/api/conversations", headers=AUTH).json()["conversations"] == []
+    with first.launch(save=True) as client:
+        assert client.get("/api/info", headers=AUTH).json()["saving"] is True
+        session = client.post("/api/sessions", json={}, headers=AUTH).json()
+        assert session["saved"] is False
+        result = ask(client, session)[-1]
+        assert result["saved"] is True and result["title"] == "front page"
+        base = f"/api/sessions/{session['id']}"
+        client.post(f"{base}/artifacts", json={"turn": 0}, headers=AUTH)
+        (listed,) = client.get("/api/conversations", headers=AUTH).json()[
+            "conversations"
+        ]
+        assert listed["id"] == session["id"] and listed["artifacts"] == 1
+        folder = first.root / "sessions" / session["id"]
+        assert (folder / "artifacts" / "A1-front-page.qmd").is_file()
+
+    # A later launch reads it from disk: by ID, or as the latest with --continue.
+    with first.launch(save=True, resume=True) as client:
+        body = {"conversation": session["id"]}
+        opened = client.post("/api/sessions", json=body, headers=AUTH).json()
+        assert opened["id"] == session["id"] and len(opened["turns"]) == 1
+        assert opened["artifacts"][0]["id"] == "A1"
+        renamed = client.patch(base, json={"title": " Hacker  News "}, headers=AUTH)
+        assert renamed.json()["title"] == "Hacker News"
+        assert client.patch(base, json={"title": 3}, headers=AUTH).status_code == 400
+        listed = client.get("/api/conversations", headers=AUTH).json()["conversations"]
+        assert listed[0]["title"] == "Hacker News"
+        fresh = client.post("/api/sessions", json={}, headers=AUTH).json()
+        assert fresh["id"] != session["id"] and fresh["turns"] == []
+        assert client.delete(base, headers=AUTH).json() == {"deleted": session["id"]}
+        assert not folder.exists()
+        assert client.get(base, headers=AUTH).status_code == 400
+        missing = {"conversation": "../../etc"}
+        assert (
+            client.post("/api/sessions", json=missing, headers=AUTH).status_code == 400
+        )
+        # An unsaved conversation can be dropped too.
+        gone = client.delete(f"/api/sessions/{fresh['id']}", headers=AUTH)
+        assert gone.status_code == 200
+
+    with first.launch(save=True, resume=True) as client:
+        ask(client, client.post("/api/sessions", json={}, headers=AUTH).json())
+    with first.launch(save=True, resume=True) as client:
+        latest = client.post("/api/sessions", json={"resume": True}, headers=AUTH)
+        assert len(latest.json()["turns"]) == 1
+
+
+def test_export_needs_quarto_and_reports_its_failures(served, monkeypatch, tmp_path):
+    client, _ = served
+    monkeypatch.setattr(export_module, "quarto_path", lambda: None)
+    assert export_formats() == ()
+    assert client.get("/api/info", headers=AUTH).json()["export_formats"] == []
+    session = client.post("/api/sessions", json={}, headers=AUTH).json()
+    ask(client, session)
+    base = f"/api/sessions/{session['id']}/artifacts"
+    client.post(base, json={"turn": 0}, headers=AUTH)
+    refused = client.get(f"{base}/A1/download?format=pdf", headers=AUTH)
+    assert refused.status_code == 400 and "Quarto" in refused.json()["error"]
+
+    # A stand-in program: it writes the file it is asked for, or fails.
+    program = tmp_path / "quarto"
+    program.write_text(
+        "#!/bin/sh\n"
+        'if [ "$4" = docx ]; then echo "bad input" >&2; exit 1; fi\n'
+        'echo rendered > "$6"\n'
+    )
+    program.chmod(0o755)
+    monkeypatch.setattr(export_module, "quarto_path", lambda: str(program))
+    formats = client.get("/api/info", headers=AUTH).json()["export_formats"]
+    assert {"id": "pdf", "label": "PDF"} in formats and len(formats) == 4
+    made = client.get(f"{base}/A1/download?format=slides", headers=AUTH)
+    assert 'filename="A1-front-page-slides.html"' in made.headers["content-disposition"]
+    assert made.text == "rendered\n"
+    failed = client.get(f"{base}/A1/download?format=docx", headers=AUTH)
+    assert failed.status_code == 400 and "bad input" in failed.json()["error"]
+
+    source = tmp_path / "A1.qmd"
+    source.write_text("text")
+    assert export_artifact(source, "pdf").name == "A1.pdf"
+    for path, kind in ((source, "exe"), (tmp_path / "none.qmd", "pdf")):
+        with pytest.raises(InputError):
+            export_artifact(path, kind)
+    monkeypatch.setattr(export_module, "quarto_path", lambda: str(tmp_path / "gone"))
+    with pytest.raises(InputError, match="could not be started"):
+        export_artifact(source, "pdf")

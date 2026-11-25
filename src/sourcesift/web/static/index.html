@@ -7,48 +7,57 @@
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<header class="bar">
-  <h1>SourceSift</h1>
-  <span id="model" class="muted"></span>
-  <span class="grow"></span>
-  <button id="btn-sources" type="button" class="ghost">Sources</button>
-  <button id="btn-evidence" type="button" class="ghost">Evidence</button>
-  <button id="btn-new" type="button" class="ghost">New chat</button>
-</header>
-<div class="layout">
-  <main>
-    <div id="scroller">
-      <div id="transcript" aria-live="polite">
-        <div id="empty" class="empty">
-          <h2>What do you want to look into?</h2>
-          <p class="muted">Answers are built from retrieved sources and cite them.</p>
-          <div class="suggestions">
-            <button type="button" class="suggestion">Chart the temperature forecast for Chicago this week.</button>
-            <button type="button" class="suggestion">Chart total US national debt over the past year.</button>
-            <button type="button" class="suggestion">What is on the Hacker News front page right now?</button>
-            <button type="button" class="suggestion">What are today's top technology stories?</button>
-          </div>
-        </div>
-      </div>
+<nav id="sidebar" aria-label="Conversations">
+  <div class="side-head">
+    <h1>SourceSift</h1>
+    <button id="btn-new" type="button">New chat</button>
+  </div>
+  <div id="conversations" class="conversations"></div>
+  <p id="side-note" class="muted side-note" hidden></p>
+</nav>
+<main>
+  <header class="bar">
+    <button id="btn-side" type="button" class="ghost" aria-label="Show or hide conversations">☰</button>
+    <h2 id="title" class="title">New chat</h2>
+    <span id="model" class="muted"></span>
+    <span class="grow"></span>
+    <button id="btn-artifacts" type="button" class="ghost" hidden>Artifacts</button>
+    <button id="btn-sources" type="button" class="ghost">Sources</button>
+    <button id="btn-evidence" type="button" class="ghost">Evidence</button>
+  </header>
+  <div id="scroller">
+    <div id="transcript" aria-live="polite"></div>
+  </div>
+  <div class="dock">
+    <div id="toast" class="toast" role="status" hidden></div>
+    <form id="composer">
+      <textarea id="prompt" rows="1" placeholder="Ask anything…" aria-label="Your question"></textarea>
+      <button id="send" type="submit" class="send" aria-label="Send">
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path class="icon-send" d="M10 16V4M4.5 9.5 10 4l5.5 5.5" /><rect class="icon-stop" x="5.5" y="5.5" width="9" height="9" rx="1.5" /></svg>
+      </button>
+    </form>
+  </div>
+</main>
+<aside id="panel" hidden>
+  <div class="panel-head">
+    <h2 id="panel-title"></h2>
+    <div id="panel-actions" class="panel-tools"></div>
+    <button id="panel-close" type="button" class="ghost" aria-label="Close panel">Close</button>
+  </div>
+  <div id="panel-body"></div>
+</aside>
+<template id="empty-state">
+  <div id="empty" class="empty">
+    <h2>What do you want to look into?</h2>
+    <p class="muted">Answers are built from retrieved sources and cite them.</p>
+    <div class="suggestions">
+      <button type="button" class="suggestion">Write a short briefing on today's top technology stories.</button>
+      <button type="button" class="suggestion">Chart total US national debt over the past year.</button>
+      <button type="button" class="suggestion">What is on the Hacker News front page right now?</button>
+      <button type="button" class="suggestion">Chart the temperature forecast for Chicago this week.</button>
     </div>
-    <div class="dock">
-      <div id="toast" class="toast" role="status" hidden></div>
-      <form id="composer">
-        <textarea id="prompt" rows="1" placeholder="Ask anything…" aria-label="Your question"></textarea>
-        <button id="send" type="submit" class="send" aria-label="Send">
-          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path class="icon-send" d="M10 16V4M4.5 9.5 10 4l5.5 5.5" /><rect class="icon-stop" x="5.5" y="5.5" width="9" height="9" rx="1.5" /></svg>
-        </button>
-      </form>
-    </div>
-  </main>
-  <aside id="panel" hidden>
-    <div class="panel-head">
-      <h2 id="panel-title"></h2>
-      <button id="panel-close" type="button" class="ghost" aria-label="Close panel">Close</button>
-    </div>
-    <div id="panel-body"></div>
-  </aside>
-</div>
+  </div>
+</template>
 <script type="module" src="/app.js"></script>
 </body>
 </html>
