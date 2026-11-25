@@ -23,11 +23,14 @@ from pydantic_ai.messages import (
     FunctionToolResultEvent,
     ModelMessage,
     ModelMessagesTypeAdapter,
+    ModelRequest,
     ModelResponse,
     PartDeltaEvent,
     PartStartEvent,
     TextPart,
     TextPartDelta,
+    ToolReturnPart,
+    UserPromptPart,
 )
 from pydantic_ai.models import Model
 from pydantic_ai.models.openrouter import OpenRouterModel, OpenRouterModelSettings
@@ -89,6 +92,8 @@ belongs by writing its "place" Markdown on its own line, for example
 placed again. Never write an image with any other target, never claim a chart
 exists unless make_figure succeeded, and do not repeat a chart's values as a
 long list. There are no maps.
+A tool reply's evidence lists only items that are new or changed since the last
+reply; unchanged_evidence_ids names earlier items that remain valid and citable.
 After research, read_article can retrieve details from returned links. Use it when
 feed summaries cannot support the requested detail. Retrieval is bounded; stop
 when evidence is sufficient. Do not repeatedly call tools that failed.
@@ -125,7 +130,9 @@ artifact.
 
 _SESSION_INSTRUCTIONS = """
 This request is a turn in an ongoing research conversation. Resolve follow-ups
-against previous messages and evidence. The current payload's retained_evidence
+against previous messages and evidence. Earlier requests and tool replies in the
+history are shortened (marked earlier_turn or text_omitted); the current payload
+has the catalog and the evidence text. The current payload's retained_evidence
 is the authoritative snapshot for prior citations; IDs remain stable across turns.
 Prior evidence is NOT freshly verified. Inspect retrieved_at and the current clock;
 retrieve again for fresh news or explicit refresh requests. Preserve limitations
@@ -164,6 +171,49 @@ class ConversationState:
             )
             + len("\n".join(self.limitations).encode())
         )
+
+
+def _compact(messages: list[ModelMessage]) -> None:
+    """Shrink finished turns in a conversation's history, in place.
+
+    Every turn's request carries the catalog and all retained evidence, so
+    keeping earlier copies would send them again with each later turn. An
+    earlier request keeps its task; an earlier tool reply keeps which evidence
+    it found, without the text.
+    """
+    for message in messages:
+        if not isinstance(message, ModelRequest):
+            continue
+        for part in message.parts:
+            if isinstance(part, UserPromptPart) and isinstance(part.content, str):
+                try:
+                    payload = json.loads(part.content)
+                except ValueError:
+                    continue
+                if isinstance(payload, dict) and "catalog" in payload:
+                    part.content = json.dumps(
+                        {
+                            "task": payload.get("task"),
+                            "now_utc": payload.get("now_utc"),
+                            "earlier_turn": True,
+                        },
+                        ensure_ascii=False,
+                    )
+            elif isinstance(part, ToolReturnPart) and isinstance(part.content, dict):
+                evidence = part.content.get("evidence")
+                if isinstance(evidence, list) and evidence:
+                    part.content = part.content | {
+                        "evidence": [
+                            {
+                                key: item[key]
+                                for key in ("id", "title", "kind")
+                                if key in item
+                            }
+                            for item in evidence
+                            if isinstance(item, dict)
+                        ],
+                        "text_omitted": "See retained_evidence in the latest request.",
+                    }
 
 
 EventHandler = Callable[[SessionEvent], None]
@@ -265,7 +315,16 @@ async def run_agent(
     toolkit = toolkit if toolkit is not None else builtin_toolkit()
     catalog = []
     for source in registry.list():
-        entry = source.model_dump()
+        # Only what choosing a source needs: no feed addresses, no empty fields.
+        entry = {
+            key: value
+            for key, value in source.model_dump(
+                exclude={"feeds", "website", "language"}
+            ).items()
+            if value not in ("", [], (), None)
+        }
+        if source.language != "en":
+            entry["language"] = source.language
         if (data_source := toolkit.sources.get(source.id)) is not None:
             entry["params"] = data_source.params.model_json_schema()
         catalog.append(entry)
@@ -530,6 +589,7 @@ async def run_agent(
                 + "\n".join(result.limitations)
             )
         ]
+        _compact(messages)
         candidate = ConversationState(
             messages,
             research.all_evidence,
