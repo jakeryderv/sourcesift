@@ -92,6 +92,12 @@ belongs by writing its "place" Markdown on its own line, for example
 placed again. Never write an image with any other target, never claim a chart
 exists unless make_figure succeeded, and do not repeat a chart's values as a
 long list. There are no maps.
+To quote exact values or write a Markdown table from a chartable table, call
+read_table; it returns at most 60 rows, so summarize a long table with its
+period, since, or top arguments. make_figure takes the same arguments, for
+example period='month', combine='last' for month-end values. You cannot see
+rows you have not read: never state a value that is not in evidence text or a
+read_table reply.
 A tool reply's evidence lists only items that are new or changed since the last
 reply; unchanged_evidence_ids names earlier items that remain valid and citable.
 After research, read_article can retrieve details from returned links. Use it when
@@ -141,6 +147,8 @@ request limited to specific sources or dates. Do not cite it as satisfying such
 constraints unless it qualifies. read_article may read retained evidence URLs
 directly for follow-ups. Direct URLs for research must still occur in the current
 task. Ask for clarification when 'the second one' has no clear antecedent.
+The payload's chartable lists tables kept from earlier query_source calls: chart
+or read them directly, and query a source again only for different or fresher data.
 """
 
 
@@ -356,6 +364,7 @@ async def run_agent(
                 {"id": item.id, "title": item.title, "version": item.version}
                 for item in (state.artifacts.values() if state else ())
             ],
+            "chartable": research.chartable(),
             "now_utc": research.now.isoformat(),
             "timezone": settings.sources.timezone,
             "recent_days": settings.sources.recent_days,
@@ -440,6 +449,7 @@ async def run_agent(
                 agent.tool_plain(sequential=True)(research.research)
                 agent.tool_plain(sequential=True)(research.query_source)
                 agent.tool_plain(sequential=True)(research.make_figure)
+                agent.tool_plain(sequential=True)(research.read_table)
                 agent.tool_plain(sequential=True)(research.read_article)
                 if artifacts:
                     agent.tool_plain(sequential=True)(research.write_artifact)

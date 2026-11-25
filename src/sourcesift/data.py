@@ -6,6 +6,7 @@ returned. The picture is drawn from that recipe by ``sourcesift.figures``, so a
 figure's values never pass through the model.
 """
 
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 from pydantic import Field, JsonValue, model_validator
@@ -79,6 +80,149 @@ class Table(Contract):
                 for c in self.columns
             ],
         }
+
+
+PERIODS = ("day", "week", "month", "quarter", "year")
+COMBINES = ("last", "first", "mean", "sum", "min", "max")
+
+
+def _moment(cell: Cell, name: str) -> datetime:
+    try:
+        # Times are written in the zone they should be read in; drop the offset.
+        return datetime.fromisoformat(str(cell)).replace(tzinfo=None)
+    except ValueError:
+        raise ValueError(
+            f"Column {name!r} has a value that is not a date or time."
+        ) from None
+
+
+def _period_start(moment: datetime, period: str) -> date:
+    day = moment.date()
+    if period == "week":
+        return day - timedelta(days=day.weekday())
+    if period == "month":
+        return day.replace(day=1)
+    if period == "quarter":
+        return day.replace(month=3 * ((day.month - 1) // 3) + 1, day=1)
+    if period == "year":
+        return day.replace(month=1, day=1)
+    return day
+
+
+def _combined(values: list[float], combine: str) -> float | None:
+    if not values:
+        return None
+    if combine == "mean":
+        return sum(values) / len(values)
+    return {"sum": sum, "min": min, "max": max}[combine](values)
+
+
+def shape(
+    table: Table,
+    *,
+    columns: tuple[str, ...] = (),
+    period: str = "",
+    combine: str = "last",
+    since: str = "",
+    top: int = 0,
+) -> Table:
+    """A smaller table made from ``table``; the values still come from its rows.
+
+    ``columns`` keeps those columns, in that order (all of them when empty).
+    ``since`` keeps rows on or after an ISO date. ``period`` (day, week, month,
+    quarter, or year) leaves one row per period, combining each number column
+    with ``combine``: the last or first value, or the mean, sum, min, or max.
+    Text columns split each period into one row per distinct value. ``top``
+    keeps that many rows with the largest values in the first number column.
+    Raises ``ValueError``, worded for the model, when the table does not fit.
+    """
+    period, combine, since = (
+        period.strip().lower(),
+        combine.strip().lower(),
+        since.strip(),
+    )
+    if period and period not in PERIODS:
+        raise ValueError(f"period must be one of: {', '.join(PERIODS)}.")
+    if combine not in COMBINES:
+        raise ValueError(f"combine must be one of: {', '.join(COMBINES)}.")
+    if top < 0:
+        raise ValueError("top cannot be negative.")
+    names = list(dict.fromkeys(columns)) or [column.name for column in table.columns]
+    places = [table.index(name) for name in names]
+    kinds = [table.kind(name) for name in names]
+    kept = tuple(
+        table.columns[place].model_copy(update={"kind": kind})
+        for place, kind in zip(places, kinds, strict=True)
+    )
+    rows = [tuple(row[place] for place in places) for row in table.rows]
+    numbers = [i for i, kind in enumerate(kinds) if kind == "number"]
+    label = []
+    if since or period:
+        clock = next((i for i, kind in enumerate(kinds) if kind == "time"), None)
+        if clock is None:
+            raise ValueError("period and since need a time column among the columns.")
+        timed = sorted(
+            (
+                (_moment(row[clock], names[clock]), row)
+                for row in rows
+                if row[clock] is not None
+            ),
+            key=lambda pair: pair[0],
+        )
+        if since:
+            try:
+                start = datetime.fromisoformat(since).replace(tzinfo=None)
+            except ValueError:
+                raise ValueError(
+                    "since must be an ISO date such as 2026-01-31."
+                ) from None
+            timed = [pair for pair in timed if pair[0] >= start]
+            label.append(f"since {since}")
+        rows = [row for _, row in timed]
+        if period:
+            texts = [i for i, kind in enumerate(kinds) if kind == "text"]
+            groups: dict[tuple, list[tuple]] = {}
+            for moment, row in timed:
+                key = (_period_start(moment, period), *(row[i] for i in texts))
+                groups.setdefault(key, []).append(row)
+            rows = []
+            for key, members in groups.items():
+                if combine in ("first", "last"):
+                    # One recorded row stands for the period, with its own date.
+                    order = members if combine == "first" else members[::-1]
+                    rows.append(
+                        next(
+                            (
+                                m
+                                for m in order
+                                if any(isinstance(m[i], int | float) for i in numbers)
+                            ),
+                            order[0],
+                        )
+                    )
+                    continue
+                row = list(members[-1])
+                row[clock] = key[0].isoformat()
+                for i in numbers:
+                    present = [
+                        float(m[i]) for m in members if isinstance(m[i], int | float)
+                    ]
+                    row[i] = _combined(present, combine)
+                rows.append(tuple(row))
+            label.append(f"{combine} per {period}")
+    if top:
+        if not numbers:
+            raise ValueError("top needs a number column among the columns.")
+        first = numbers[0]
+        ranked = [row for row in rows if isinstance(row[first], int | float)]
+        rows = sorted(ranked, key=lambda row: row[first], reverse=True)[:top]
+        label.append(f"top {top}")
+    if not rows:
+        raise ValueError("No rows are left after that selection.")
+    if not label and len(names) == len(table.columns):
+        return table
+    name = f"{table.name} ({', '.join(label)})" if label else table.name
+    return Table(name=name[:120], columns=kept, rows=tuple(rows))
 
 
 FigureKind = Literal["line", "area", "bar", "stacked_bar", "scatter", "donut"]

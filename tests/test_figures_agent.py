@@ -2,6 +2,7 @@
 
 import json
 from contextlib import asynccontextmanager
+from typing import Any
 
 import pytest
 from pydantic import BaseModel
@@ -102,7 +103,13 @@ def test_model_names_columns_and_the_application_draws_the_figure(monkeypatch, c
             assert sent["figures"] == [] and "widgets" not in sent
             names = {tool.name for tool in info.function_tools}
             # One-off requests get no document tool unless it is asked for.
-            assert names == {"research", "query_source", "make_figure", "read_article"}
+            assert names == {
+                "research",
+                "query_source",
+                "make_figure",
+                "read_table",
+                "read_article",
+            }
             assert "make_figure(evidence_id, kind, x, y, ...)" in info.instructions
             assert "write_artifact" not in info.instructions
             return tools(QUERY)
@@ -128,6 +135,117 @@ def test_model_names_columns_and_the_application_draws_the_figure(monkeypatch, c
     assert Result.model_validate(result.model_dump(mode="json")) == result
     text = cli.render_result(result, "plain")
     assert "Figures:\n- F1: Debt (line chart) [S1]" in text
+
+
+@pytest.mark.asyncio
+async def test_rows_are_summarized_for_a_chart_and_read_for_a_table(monkeypatch):
+    replies = []
+
+    def call(name, args):
+        # Each call needs its own ID to be its own step.
+        return ModelResponse(parts=[ToolCallPart(name, args, f"call-{len(replies)}")])
+
+    async def respond(messages, info):
+        last = messages[-1].parts[0]
+        if last.part_kind == "tool-return":
+            replies.append(last.content)
+        if len(replies) == 0:
+            return call(*QUERY)
+        if len(replies) == 1:
+            monthly = CHART[1] | {"kind": "bar", "period": "month", "title": "Monthly"}
+            return call("make_figure", monthly)
+        if len(replies) == 2:
+            return call("read_table", {"evidence_id": "S1", "period": "month"})
+        if len(replies) == 3:
+            return call("read_table", {"evidence_id": "S1", "period": "decade"})
+        return ModelResponse(parts=[TextPart("Month-end debt [S1].\n\n![Monthly](F1)")])
+
+    session = configure(monkeypatch, respond).session()
+    result = await session.run("chart month-end debt and list the values")
+    (chart,) = result.figures
+    # One bar per month, drawn from the last record in it and dated as recorded.
+    assert chart.table.name.endswith("(last per month)")
+    assert chart.table.rows == (("2026-10-14", 38000000000300.5),)
+    read = replies[2]
+    assert read["total_rows"] == 1 and read["cite"] == "[S1]"
+    assert read["rows"][0][0] == "2026-10-14" and len(read["columns"]) > 1
+    assert "period must be one of" in replies[3]["error"]
+    assert [(step.tool, step.state, step.summary) for step in result.steps][2:] == [
+        ("read_table", "done", "1 row"),
+        (
+            "read_table",
+            "failed",
+            "period must be one of: day, week, month, quarter, year.",
+        ),
+    ]
+
+    # A later turn is told which tables it still holds, so it need not query again.
+    async def follow_up(messages, info):
+        kept = payload(messages)["chartable"]
+        assert kept[0]["evidence_id"] == "S1" and kept[0]["tables"][0]["rows"] == 2
+        return ModelResponse(parts=[TextPart("Still [S1].")])
+
+    monkeypatch.setattr(
+        runtime, "_openrouter_model", asynccontextmanager(_yield(follow_up))
+    )
+    assert (await session.run("and again?")).http_requests == 0
+
+
+def _yield(respond):
+    async def model(settings):
+        yield FunctionModel(respond)
+
+    return model
+
+
+def test_shape_selects_summarizes_and_ranks_rows():
+    from sourcesift import Column
+    from sourcesift.data import shape
+
+    table = Table(
+        name="Sales",
+        columns=(
+            Column(name="Day", kind="time"),
+            Column(name="Units"),
+            Column(name="Region"),
+        ),
+        rows=(
+            ("2026-02-02", 9, "east"),
+            ("2026-01-05", 1, "east"),
+            ("2026-01-30", 2, "east"),
+            ("2026-01-30", 4, "west"),
+            ("2026-03-02", None, "east"),
+        ),
+    )
+    assert shape(table) is table
+    monthly = shape(table, columns=("Day", "Units"), period="month", combine="sum")
+    assert monthly.name == "Sales (sum per month)"
+    assert monthly.rows == (
+        ("2026-01-01", 7.0),
+        ("2026-02-01", 9.0),
+        ("2026-03-01", None),
+    )
+    # A text column splits each period. First and last keep a recorded row
+    # whole, skipping one with no number in it.
+    split = shape(table, period="quarter", combine="last", since="2026-01-10")
+    assert split.rows == (("2026-02-02", 9, "east"), ("2026-01-30", 4, "west"))
+    assert shape(table, columns=("Region", "Units"), top=2).rows == (
+        ("east", 9),
+        ("west", 4),
+    )
+    cases: tuple[tuple[dict[str, Any], str], ...] = (
+        ({"period": "hour"}, "period must be"),
+        ({"combine": "median"}, "combine must be"),
+        ({"columns": ("Units",), "period": "month"}, "time column"),
+        ({"columns": ("Region",), "top": 1}, "number column"),
+        ({"since": "next week"}, "ISO date"),
+        ({"since": "2030-01-01"}, "No rows"),
+        ({"columns": ("Missing",)}, "no column"),
+        ({"top": -1}, "negative"),
+    )
+    for options, problem in cases:
+        with pytest.raises(ValueError, match=problem):
+            shape(table, **options)
 
 
 def test_a_figure_the_answer_forgot_is_placed_after_it(monkeypatch):

@@ -79,8 +79,13 @@ def describe_call(
     elif tool == "make_figure":
         kind = _short(arguments.get("kind", ""), 20).replace("_", " ")
         title = f"Drawing a {kind} chart".replace("  ", " ")
-        for key in ("x", "y", "series", "table"):
+        for key in ("x", "y", "series", "table", "period", "since", "top"):
             if arguments.get(key):
+                lines.append(f"{key}: {_short(arguments[key], 80)}")
+    elif tool == "read_table":
+        title = "Reading rows of a table"
+        for key in ("table", "columns", "period", "combine", "since", "top"):
+            if arguments.get(key) and (key != "combine" or arguments.get("period")):
                 lines.append(f"{key}: {_short(arguments[key], 80)}")
     elif tool == "write_artifact":
         revising = bool(str(arguments.get("artifact_id", "")).strip())
@@ -104,6 +109,9 @@ def describe_result(
         return "failed", "No result", (_short(content),)
     if content.get("error"):
         return "failed", _short(content["error"]), ()
+    if tool == "read_table":
+        count = content.get("total_rows")
+        return "done", f"{count} row{'' if count == 1 else 's'}", ()
     if tool in {"make_figure", "write_artifact"}:
         return "done", _short(content.get("title", "")), ()
     lines = []
